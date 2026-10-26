@@ -1,0 +1,161 @@
+// PsyMatch 数据模型
+// 说明：本地开发使用 SQLite（零安装）。SQLite 下 Prisma 不支持 enum / Json，
+// 因此「枚举字段」一律以 String 存储，取值约束由 src/lib/domain.ts 中的常量 + Zod 保证；
+// 「Json 字段」以 JSON 字符串存储，读写走 src/lib/domain.ts 的 helpers。
+// 迁移到 PostgreSQL 时只需把 provider 改为 "postgresql" 并改 DATABASE_URL，
+// 字段名与结构完全一致（见 DECISIONS.md）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String  @id @default(cuid())
+  phone    String  @unique
+  role     String  @default("SUBJECT") // Role
+  name     String
+  school   String?
+  department String?
+  avatarUrl String?
+
+  // 学生认证
+  studentVerified Boolean   @default(false)
+  studentId       String?
+  eduEmail        String?
+  verifiedAt      DateTime?
+
+  // 信誉分（被试与主试共用，按 role 解释）
+  creditScore Int       @default(100)
+  noShowCount Int       @default(0)
+  bannedUntil DateTime?
+
+  createdAt DateTime @default(now())
+
+  experiments  Experiment[]
+  appointments Appointment[]
+  creditEvents CreditEvent[]
+  chatSessions ChatSession[]
+
+  @@index([role])
+}
+
+model Experiment {
+  id           String @id @default(cuid())
+  researcherId String
+  title        String
+  description  String
+  location     String
+  durationMin  Int
+  rewardText   String
+  type         String @default("INDIVIDUAL") // ExperimentType
+  groupSize    Int?
+  requirements String?
+  minCreditScore Int  @default(0)
+  needsVerification Boolean @default(true)
+  signupDeadline DateTime
+  status       String @default("DRAFT") // ExperimentStatus
+  createdAt    DateTime @default(now())
+
+  researcher User @relation(fields: [researcherId], references: [id], onDelete: Cascade)
+  slots      Slot[]
+  appointments Appointment[]
+  chatSessions ChatSession[]
+
+  @@index([status, signupDeadline])
+}
+
+model Slot {
+  id           String   @id @default(cuid())
+  experimentId String
+  startAt      DateTime
+  endAt        DateTime
+  capacity     Int      @default(1)
+  bookedCount  Int      @default(0)
+
+  experiment   Experiment    @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([experimentId, startAt])
+  @@index([experimentId, startAt])
+}
+
+model Appointment {
+  id           String @id @default(cuid())
+  experimentId String
+  slotId       String
+  subjectId    String
+  status       String @default("PENDING_SUBJECT_CONFIRM") // AppointmentStatus
+  checkinCode  String
+  createdAt    DateTime @default(now())
+  confirmedAt  DateTime?
+  checkedInAt  DateTime?
+  noShowAt     DateTime?
+
+  // 签到防爆破
+  checkinAttempts  Int       @default(0)
+  checkinLockedUntil DateTime?
+
+  // 申诉
+  appealStatus     String? // null | PENDING | UPHELD | REJECTED
+  appealAt         DateTime?
+  appealResolvedAt DateTime?
+  appealNote       String?
+
+  // 主试处理提醒（定时任务写入）
+  remindedAt   DateTime?
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  slot       Slot       @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  subject    User       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, subjectId])
+  @@index([subjectId, status])
+  @@index([experimentId, status])
+}
+
+model ChatSession {
+  id           String @id @default(cuid())
+  experimentId String
+  subjectId    String
+  state        String @default("COLLECTING_AVAILABILITY")
+  messages     String @default("[]") // JSON 字符串
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  experiment Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  subject    User       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([experimentId, subjectId])
+}
+
+model CreditEvent {
+  id            String   @id @default(cuid())
+  userId        String
+  delta         Int
+  reason        String // CreditReason
+  appointmentId String?
+  note          String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// 登录验证码 / 教育邮箱验证码。开发环境统一 123456（邮箱为 6 位随机并打印到控制台）。
+model VerifyCode {
+  id        String   @id @default(cuid())
+  target    String // 手机号 或 邮箱
+  purpose   String // LOGIN | EDU_EMAIL
+  code      String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([target, purpose])
+}
