@@ -11,3 +11,7 @@ prisma/dev.db-journal
 tsconfig.tsbuildinfo
 next-env.d.ts
 coverage/
+shots/
+.edge-profile/
+.edge-sub/
+.edge-sub/

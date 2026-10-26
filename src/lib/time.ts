@@ -33,6 +33,13 @@ export function formatDayKey(date: Date) {
   return `${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
 }
 
+/** 例：10-31 周五（紧凑，用于列表里的副信息） */
+export function formatShortDayCN(date: Date) {
+  const p = shanghaiParts(date);
+  const wd = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][p.weekday];
+  return `${formatDayKey(date)} ${wd}`;
+}
+
 /** 例：14:30 */
 export function formatHM(date: Date) {
   const p = shanghaiParts(date);

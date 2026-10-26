@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { MapPin, Clock3 } from "lucide-react";
-import { VerifiedBadge, StatusPill } from "@/components/ui/badge";
+import { VerifiedBadge } from "@/components/ui/badge";
 import { formatDateTimeCN, formatHM } from "@/lib/time";
 import type { CardView } from "@/server/experiments";
 
@@ -25,13 +25,9 @@ export function ExperimentCard({ card }: { card: CardView }) {
       <div className="pl-[19px] pr-4 py-3.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[15px] font-semibold leading-[22px] text-ink">{card.title}</h3>
-          {card.lowCreditResearcher ? (
-            <StatusPill tone="grey">主试信誉较低</StatusPill>
-          ) : (
-            <span className="num shrink-0 pt-0.5 text-[15px] font-semibold text-clay">
-              {card.rewardText}
-            </span>
-          )}
+          <span className="num shrink-0 pt-0.5 text-[15px] font-semibold text-clay">
+            {card.rewardText}
+          </span>
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-ink-soft">
@@ -53,8 +49,11 @@ export function ExperimentCard({ card }: { card: CardView }) {
           </span>
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-2">
+        <div className="mt-2.5 flex items-end justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
+            {card.lowCreditResearcher ? (
+              <span className="chip bg-[#f1f2ee] text-ink-soft">主试信誉较低</span>
+            ) : null}
             {next ? (
               <span className="chip bg-mist text-ink-soft">
                 最近 <span className="num">{formatDateTimeCN(next)}</span>

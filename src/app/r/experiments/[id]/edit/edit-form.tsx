@@ -148,7 +148,7 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
   }
 
   return (
-    <main className="shell tabbar-space">
+    <main className="shell with-actionbar">
       <PageHeader
         title="编辑实验"
         back={`/r/experiments/${experimentId}`}
@@ -195,18 +195,16 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
               rows={2}
             />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="信誉分门槛" hint="0–100">
-              <Input
-                inputMode="numeric"
-                value={minCreditScore}
-                onChange={(e) => setMinCreditScore(e.target.value.replace(/\D/g, "").slice(0, 3))}
-              />
-            </Field>
-            <Field label="报名截止">
-              <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-            </Field>
-          </div>
+          <Field label="信誉分门槛" hint="0–100">
+            <Input
+              inputMode="numeric"
+              value={minCreditScore}
+              onChange={(e) => setMinCreditScore(e.target.value.replace(/\D/g, "").slice(0, 3))}
+            />
+          </Field>
+          <Field label="报名截止" hint="必须早于最早时段">
+            <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+          </Field>
           <label className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5">
             <span>
               <span className="block text-[13px] text-ink">仅限已认证学生报名</span>

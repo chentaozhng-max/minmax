@@ -195,7 +195,8 @@ export async function listResearcherExperiments(researcherId: string) {
     pendingCount: e.appointments.filter(
       (a) =>
         a.status === AppointmentStatus.AWAITING_RESEARCHER ||
-        a.status === AppointmentStatus.PENDING_SUBJECT_CONFIRM,
+        a.status === AppointmentStatus.PENDING_SUBJECT_CONFIRM ||
+        a.appealStatus === "PENDING",
     ).length,
   }));
 }

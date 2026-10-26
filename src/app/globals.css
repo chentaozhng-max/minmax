@@ -129,6 +129,11 @@
     padding-bottom: calc(56px + env(safe-area-inset-bottom) + 12px);
   }
 
+  /* 底部同时有 Tab 栏和固定操作条时用这个 */
+  .with-actionbar {
+    padding-bottom: calc(56px + 64px + env(safe-area-inset-bottom) + 12px);
+  }
+
   .actionbar-space {
     padding-bottom: calc(64px + env(safe-area-inset-bottom) + 12px);
   }

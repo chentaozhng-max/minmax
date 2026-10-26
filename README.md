@@ -150,6 +150,29 @@ npm run accept # 22 项数据库级检查：防超卖 / 分时段 / 禁期阶梯
 
 ---
 
+## 移动端视觉自检（375×812）
+
+`scripts/shoot.mjs` 用 CDP 驱动无头 Edge，按 375×812 逐页截图，同时打印每一页的
+`scrollWidth`，用来抓横向溢出。
+
+```bash
+# 1. 需要一个开了自测登录的实例（该接口默认 404，只有显式开启才生效）
+ENABLE_DEV_LOGIN=true npm start
+
+# 2. pages.txt 每行 "名字 路径"，第一行先过 /api/dev/login 拿 cookie
+cat > shots/pages.txt <<EOF
+bridge /api/dev/login?phone=13900000001&to=/
+home /
+me /me
+EOF
+
+node scripts/shoot.mjs http://localhost:3000 shots shots/pages.txt
+```
+
+输出里出现 `OVERFLOW` 就说明该页有元素把布局撑宽了。
+
+---
+
 ## 环境变量
 
 复制 `.env.example` 为 `.env`，关键是这三项：

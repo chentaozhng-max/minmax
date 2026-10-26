@@ -92,7 +92,9 @@ export function ChatView({
   }, [messages.length, view.mode, send.isPending]);
 
   const blocked = view.blocked;
-  const formMode = view.mode === "form" || view.state === "PROPOSED" || Boolean(blocked);
+  // 只有接口真的降级（LLM 不可用 / 超时 / 聊满 12 轮）才显示表单。
+  // Agent 正常提出候选时 state 也是 PROPOSED，但那是对话流，不能切成表单。
+  const formMode = view.mode === "form";
 
   function submitText() {
     const text = draft.trim();
@@ -114,15 +116,26 @@ export function ChatView({
       />
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
-        <div className="mb-3 rounded-[10px] border border-line bg-mist/60 px-3 py-2 text-[11px] leading-5 text-ink-soft">
-          这次实验 {experiment.durationMin} 分钟，在{experiment.location}，报酬 {experiment.rewardText}。
-        </div>
-
         {messages.length === 0 ? (
-          <AgentBubble>
-            这个实验要 {experiment.durationMin} 分钟，地点在{experiment.location}。你未来 7
-            天哪些时段方便？说得模糊一点也行，比如「周三下午」。
-          </AgentBubble>
+          <>
+            <AgentBubble>
+              这个实验要 {experiment.durationMin} 分钟，地点在{experiment.location}。你未来 7
+              天哪些时段方便？说得模糊一点也行，比如「周三下午」。
+            </AgentBubble>
+            <div className="mb-3 ml-9 flex flex-wrap gap-1.5">
+              {["周三下午", "明天上午", "这周都行", "你帮我挑"].map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  disabled={send.isPending}
+                  onClick={() => send.mutate(text)}
+                  className="press rounded-pill border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-soft active:bg-mist"
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          </>
         ) : null}
 
         {messages.map((message, index) => (

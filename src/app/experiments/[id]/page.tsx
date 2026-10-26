@@ -8,7 +8,7 @@ import { checkEligibility } from "@/lib/credit";
 import { VerifiedBadge, StatusPill } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { SlotGrid } from "@/components/slot-grid";
-import { formatDateTimeCN, formatDayCN, formatHM } from "@/lib/time";
+import { formatDateTimeCN, formatDayCN, formatDayKey, formatHM } from "@/lib/time";
 import { remainingOf } from "@/server/experiments";
 import { BookCta } from "./book-cta";
 
@@ -143,11 +143,9 @@ export default async function ExperimentDetailPage({
         ) : null}
 
         <section className="mt-5">
-          <div className="mb-2 flex items-baseline justify-between">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
             <h3 className="section-title">可选时段</h3>
-            <span className="text-[11px] text-ink-soft">
-              约时间请点下面的「立即预约」和排期助手聊
-            </span>
+            <span className="truncate text-[11px] text-ink-soft">点「立即预约」和助手约</span>
           </div>
           <SlotGrid
             slots={slotViews}
@@ -177,10 +175,12 @@ export default async function ExperimentDetailPage({
 
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface">
         <div className="safe-bottom mx-auto flex h-16 w-full max-w-[480px] items-center gap-3 px-4">
-          <div className="min-w-0">
-            <p className="num text-[17px] font-semibold leading-5 text-clay">{experiment.rewardText}</p>
-            <p className="text-[11px] text-ink-soft">
-              {mine ? `已约 ${formatDayCN(mine.slot.startAt)} ${formatHM(mine.slot.startAt)}` : "选时段后确认"}
+          <div className="w-[88px] shrink-0">
+            <p className="num truncate text-[17px] font-semibold leading-5 text-clay">
+              {experiment.rewardText}
+            </p>
+            <p className="num truncate text-[11px] leading-4 text-ink-soft">
+              {mine ? `已约 ${formatDayKey(mine.slot.startAt)} ${formatHM(mine.slot.startAt)}` : "未预约"}
             </p>
           </div>
           <div className="flex-1">

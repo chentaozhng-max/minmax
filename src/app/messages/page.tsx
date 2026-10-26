@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
 import { EmptyState } from "@/components/experiment-card";
 import { parseMessages } from "@/lib/domain";
-import { formatHM, formatDayCN, formatDateTimeCN } from "@/lib/time";
+import { formatDateTimeCN } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 
 const STATE_LABEL: Record<string, string> = {
@@ -70,9 +70,8 @@ export default async function MessagesPage() {
                     <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-moss">
                       {STATE_LABEL[s.state] ?? s.state}
                       <span className="text-line">|</span>
-                      <span className="text-ink-soft">
-                        {s.experiment.durationMin} 分钟 · {formatDayCN(s.createdAt)}{" "}
-                        {formatHM(s.createdAt)} 起
+                      <span className="num text-ink-soft">
+                        {s.experiment.durationMin} 分钟 · {s.experiment.rewardText}
                       </span>
                     </span>
                   </span>

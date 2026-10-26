@@ -27,7 +27,18 @@ export default async function MePage() {
     where: { subjectId: user.id },
     _count: { _all: true },
   });
-  const completed = stats.find((s) => s.status === "COMPLETED")?._count._all ?? 0;
+  const countByStatus = (statuses: string[]) =>
+    statuses.reduce(
+      (sum, status) => sum + (stats.find((s) => s.status === status)?._count._all ?? 0),
+      0,
+    );
+  const completed = countByStatus(["COMPLETED"]);
+  const ongoing = countByStatus([
+    "PENDING_SUBJECT_CONFIRM",
+    "AWAITING_RESEARCHER",
+    "CONFIRMED",
+    "CHECKED_IN",
+  ]);
 
   return (
     <main className="shell tabbar-space">
@@ -54,9 +65,9 @@ export default async function MePage() {
           </div>
 
           <div className="mt-3 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
-            <Stat label="完成实验" value={completed} />
+            <Stat label="已完成" value={completed} />
+            <Stat label="进行中" value={ongoing} />
             <Stat label="累计未到场" value={user.noShowCount} />
-            <Stat label="信誉上限" value={100} />
           </div>
 
           {banned ? (

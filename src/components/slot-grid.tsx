@@ -135,7 +135,7 @@ export function SlotGrid({
                 {formatHM(new Date(slot.startAt))}
               </span>
               <span className="num text-[11px] leading-4 text-ink-soft">
-                {formatHM(new Date(slot.startAt))}–{formatHM(new Date(slot.endAt))}
+                至 {formatHM(new Date(slot.endAt))}
               </span>
               <span
                 className={cn(

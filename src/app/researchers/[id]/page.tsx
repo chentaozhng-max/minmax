@@ -5,7 +5,7 @@ import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { CreditRing } from "@/components/credit-ring";
 import { VerifiedBadge } from "@/components/ui/badge";
-import { formatDateTimeCN, formatDayCN } from "@/lib/time";
+import { formatShortDayCN } from "@/lib/time";
 
 export default async function ResearcherPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePage();
@@ -21,6 +21,10 @@ export default async function ResearcherPage({ params }: { params: Promise<{ id:
     },
   });
   if (!researcher || researcher.role !== "RESEARCHER") notFound();
+
+  const hostedCount = await prisma.creditEvent.count({
+    where: { userId: researcher.id, reason: "ATTENDED" },
+  });
 
   const now = new Date();
   const openExperiments = researcher.experiments
@@ -54,23 +58,27 @@ export default async function ResearcherPage({ params }: { params: Promise<{ id:
                 <span className="text-[17px] font-semibold text-ink">{researcher.name}</span>
                 <VerifiedBadge verified={researcher.studentVerified} />
               </div>
-              <p className="mt-0.5 text-[12px] text-ink-soft">
+              <p className="mt-0.5 truncate text-[12px] text-ink-soft">
                 {researcher.school ?? "未填写学校"}
                 {researcher.department ? ` · ${researcher.department}` : ""}
               </p>
               <p className="mt-1 text-[11px] text-ink-soft">
-                加入时间 {formatDateTimeCN(researcher.createdAt)}
+                {researcher.experiments.length > 0 ? "正在招募被试" : "暂未发布实验"}
               </p>
             </div>
             <CreditRing score={researcher.creditScore} size={72} label="主试信誉" />
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-[8px] bg-mist/60 px-3 py-2">
+          <div className="mt-3 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
+            <div>
               <p className="num text-[15px] font-semibold text-ink">{researcher.experiments.length}</p>
               <p className="text-[11px] text-ink-soft">在招实验</p>
             </div>
-            <div className="rounded-[8px] bg-mist/60 px-3 py-2">
+            <div>
+              <p className="num text-[15px] font-semibold text-ink">{hostedCount}</p>
+              <p className="text-[11px] text-ink-soft">按时主持</p>
+            </div>
+            <div>
               <p className="num text-[15px] font-semibold text-ink">{researcher.noShowCount}</p>
               <p className="text-[11px] text-ink-soft">累计未到场</p>
             </div>
@@ -101,10 +109,10 @@ export default async function ResearcherPage({ params }: { params: Promise<{ id:
                     <span className="truncate text-[14px] font-medium text-ink">{e.title}</span>
                     <span className="num shrink-0 text-[13px] text-clay">{e.rewardText}</span>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-ink-soft">
-                    {e.location} · <span className="num">{e.durationMin} 分钟</span> · 剩{" "}
-                    <span className="num">{e.seats}</span> 位
-                    {e.nextAt ? ` · 最近 ${formatDayCN(e.nextAt)}` : ""}
+                  <p className="mt-0.5 truncate text-[11px] text-ink-soft">{e.location}</p>
+                  <p className="num mt-0.5 text-[11px] text-ink-soft">
+                    {e.durationMin} 分钟 · 剩 {e.seats} 位
+                    {e.nextAt ? ` · 最近 ${formatShortDayCN(e.nextAt)}` : ""}
                   </p>
                 </Link>
               ))}

@@ -133,7 +133,10 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
   const booked = data.slots.reduce((n, s) => n + s.bookedCount, 0);
   const total = data.slots.reduce((n, s) => n + s.capacity, 0);
   const pending = data.applicants.filter(
-    (a) => a.status === "AWAITING_RESEARCHER" || a.status === "PENDING_SUBJECT_CONFIRM",
+    (a) =>
+      a.status === "AWAITING_RESEARCHER" ||
+      a.status === "PENDING_SUBJECT_CONFIRM" ||
+      a.appealStatus === "PENDING",
   ).length;
 
   return (
@@ -212,15 +215,17 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
                     </div>
                     <StatusPill
                       tone={
-                        a.status === "CONFIRMED"
+                        a.status === "COMPLETED"
                           ? "moss"
-                          : a.status === "CHECKED_IN"
-                            ? "verify"
-                            : a.status === "NO_SHOW"
-                              ? "danger"
-                              : a.status.startsWith("CANCELLED")
-                                ? "grey"
-                                : "clay"
+                          : a.status === "CONFIRMED"
+                            ? "moss"
+                            : a.status === "CHECKED_IN"
+                              ? "verify"
+                              : a.status === "NO_SHOW"
+                                ? "danger"
+                                : a.status.startsWith("CANCELLED")
+                                  ? "grey"
+                                  : "clay"
                       }
                     >
                       {appointmentStatusLabel[a.status as AppointmentStatus] ?? a.status}

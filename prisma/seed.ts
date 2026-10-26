@@ -16,11 +16,11 @@ const SHANGHAI_OFFSET = 8 * 60 * 60 * 1000;
 
 /** 以"上海时区某天某点"构造 UTC Date */
 function shanghai(dayOffset: number, hour: number, minute = 0) {
-  const base = new Date();
-  const utcMidnight =
-    Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()) - SHANGHAI_OFFSET;
-  const dayStart = new Date(utcMidnight + dayOffset * 24 * 60 * 60 * 1000);
-  return new Date(dayStart.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000);
+  const now = new Date();
+  const shifted = new Date(now.getTime() + SHANGHAI_OFFSET);
+  const midnightUtc =
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - SHANGHAI_OFFSET;
+  return new Date(midnightUtc + dayOffset * 24 * 60 * 60 * 1000 + hour * 3600000 + minute * 60000);
 }
 
 async function main() {
@@ -241,12 +241,12 @@ async function main() {
     },
   });
 
-  console.log("创建一条待处理申诉…");
-  const pastSlot = await prisma.slot.create({
+  console.log("创建一条已完成的历史预约…");
+  const doneSlot = await prisma.slot.create({
     data: {
       experimentId: exp1.id,
-      startAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
-      endAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      startAt: shanghai(-5, 14, 0),
+      endAt: shanghai(-5, 14, 40),
       capacity: 1,
       bookedCount: 1,
     },
@@ -254,26 +254,48 @@ async function main() {
   await prisma.appointment.create({
     data: {
       experimentId: exp1.id,
+      slotId: doneSlot.id,
+      subjectId: lin.id,
+      status: "COMPLETED",
+      confirmedAt: shanghai(-6, 20, 0),
+      checkedInAt: shanghai(-5, 14, 3),
+    },
+  });
+
+  console.log("创建一条待处理申诉…");
+  const pastSlot = await prisma.slot.create({
+    data: {
+      experimentId: exp3.id,
+      startAt: shanghai(-1, 15, 0),
+      endAt: shanghai(-1, 15, 25),
+      capacity: 1,
+      bookedCount: 1,
+    },
+  });
+  await prisma.appointment.create({
+    data: {
+      experimentId: exp3.id,
       slotId: pastSlot.id,
       subjectId: lin.id,
       status: "CHECKED_IN",
-      checkedInAt: new Date(Date.now() - 2.5 * 60 * 60 * 1000),
+      checkedInAt: shanghai(-1, 15, 5),
       appealStatus: "PENDING",
-      appealAt: new Date(Date.now() - 60 * 60 * 1000),
+      appealAt: shanghai(-1, 15, 50),
       appealNote: "到场后等了 20 分钟没有见到主试，实验室门是锁的。",
     },
   });
 
   console.log("写入信誉分明细…");
+  const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
   await prisma.creditEvent.createMany({
     data: [
-      { userId: lin.id, delta: 1, reason: "ATTENDED", note: "视觉搜索实验 按时到场" },
-      { userId: lin.id, delta: 1, reason: "ATTENDED", note: "情绪词汇判断 按时到场" },
-      { userId: shen.id, delta: -2, reason: "NO_SHOW", note: "记忆编码实验 未到场" },
-      { userId: shen.id, delta: -2, reason: "NO_SHOW", note: "决策实验 未到场" },
-      { userId: shen.id, delta: -2, reason: "NO_SHOW", note: "阅读眼动实验 未到场" },
-      { userId: xu.id, delta: -2, reason: "NO_SHOW", note: "注意瞬脱实验 未到场" },
-      { userId: xie.id, delta: -2, reason: "RESEARCHER_CANCEL", note: "临时取消，距开始不足 24 小时" },
+      { userId: lin.id, delta: 1, reason: "ATTENDED", note: "面孔吸引力判断实验 按时到场", createdAt: daysAgo(5) },
+      { userId: lin.id, delta: 1, reason: "ATTENDED", note: "情绪词汇判断 按时到场", createdAt: daysAgo(18) },
+      { userId: shen.id, delta: -2, reason: "NO_SHOW", note: "记忆编码实验 未到场", createdAt: daysAgo(3) },
+      { userId: shen.id, delta: -2, reason: "NO_SHOW", note: "决策实验 未到场", createdAt: daysAgo(9) },
+      { userId: shen.id, delta: -2, reason: "NO_SHOW", note: "阅读眼动实验 未到场", createdAt: daysAgo(16) },
+      { userId: xu.id, delta: -2, reason: "NO_SHOW", note: "注意瞬脱实验 未到场", createdAt: daysAgo(12) },
+      { userId: xie.id, delta: -2, reason: "RESEARCHER_CANCEL", note: "临时取消，距开始不足 24 小时", createdAt: daysAgo(7) },
     ],
   });
 

@@ -98,7 +98,7 @@ export function NewExperimentForm() {
   }
 
   return (
-    <main className="shell tabbar-space">
+    <main className="shell with-actionbar">
       <PageHeader title="发布实验" back="/r/experiments" />
 
       <div className="flex items-center gap-1 px-4 pt-3">
@@ -199,18 +199,16 @@ export function NewExperimentForm() {
               />
             </Field>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="信誉分门槛" hint="0–100">
-                <Input
-                  inputMode="numeric"
-                  value={minCreditScore}
-                  onChange={(e) => setMinCreditScore(e.target.value.replace(/\D/g, "").slice(0, 3))}
-                />
-              </Field>
-              <Field label="报名截止">
-                <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-              </Field>
-            </div>
+            <Field label="信誉分门槛" hint="0–100">
+              <Input
+                inputMode="numeric"
+                value={minCreditScore}
+                onChange={(e) => setMinCreditScore(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              />
+            </Field>
+            <Field label="报名截止" hint="必须早于最早时段">
+              <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            </Field>
 
             <label className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5">
               <span>
