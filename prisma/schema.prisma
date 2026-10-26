@@ -90,15 +90,10 @@ model Appointment {
   slotId       String
   subjectId    String
   status       String @default("PENDING_SUBJECT_CONFIRM") // AppointmentStatus
-  checkinCode  String
   createdAt    DateTime @default(now())
   confirmedAt  DateTime?
   checkedInAt  DateTime?
   noShowAt     DateTime?
-
-  // 签到防爆破
-  checkinAttempts  Int       @default(0)
-  checkinLockedUntil DateTime?
 
   // 申诉
   appealStatus     String? // null | PENDING | UPHELD | REJECTED

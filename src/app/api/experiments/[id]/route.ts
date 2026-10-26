@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { ok, handle, ApiError } from "@/lib/http";
-import { currentUser } from "@/lib/auth";
+import { editExperimentSchema } from "@/lib/domain";
+import { currentUser, requireRole } from "@/lib/auth";
 import { getExperimentDetail, remainingOf } from "@/server/experiments";
-import { checkEligibility } from "@/lib/credit";
+import { checkEligibility, isBanned } from "@/lib/credit";
+import { ExperimentStatus } from "@/lib/domain";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -74,18 +76,31 @@ export const GET = handle(async (_req: Request, { params }: Params) => {
   });
 });
 
-/** 编辑实验（主试） */
+/** 编辑实验（主试）：改信息 / 上下架。时段用 /slots/batch 追加。 */
 export const PATCH = handle(async (req: Request, { params }: Params) => {
   const { id } = await params;
-  const user = await currentUser();
-  if (!user) throw new ApiError(401, "请先登录");
-  const experiment = await prisma.experiment.findUnique({ where: { id } });
+  const user = await requireRole("RESEARCHER");
+  const experiment = await prisma.experiment.findUnique({
+    where: { id },
+    include: { slots: { orderBy: { startAt: "asc" } } },
+  });
   if (!experiment) throw new ApiError(404, "实验不存在");
   if (experiment.researcherId !== user.id) throw new ApiError(403, "没有权限");
 
-  const body = (await req.json()) as Record<string, unknown>;
+  const body = await req.json();
+  const input = editExperimentSchema.parse(body);
+  const now = new Date();
+
+  if (input.status === ExperimentStatus.PUBLISHED && experiment.status !== ExperimentStatus.PUBLISHED) {
+    if (isBanned(user.bannedUntil, now)) {
+      throw new ApiError(403, "因累计未到场，你当前被限制发布实验");
+    }
+    const futureSlots = experiment.slots.filter((s) => s.startAt.getTime() > now.getTime());
+    if (futureSlots.length === 0) throw new ApiError(400, "没有未来的时段，无法重新发布");
+  }
+
   const data: Record<string, unknown> = {};
-  const allow = [
+  for (const key of [
     "title",
     "description",
     "location",
@@ -95,10 +110,23 @@ export const PATCH = handle(async (req: Request, { params }: Params) => {
     "minCreditScore",
     "needsVerification",
     "status",
-  ];
-  for (const key of allow) {
-    if (body[key] !== undefined) data[key] = body[key];
+  ] as const) {
+    if (input[key] !== undefined) data[key] = input[key];
   }
+
+  if (input.signupDeadline) {
+    const deadline = new Date(input.signupDeadline);
+    if (Number.isNaN(deadline.getTime())) throw new ApiError(400, "报名截止时间格式不正确");
+    const earliest = experiment.slots
+      .map((s) => s.startAt)
+      .filter((d) => d.getTime() > now.getTime())
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    if (earliest && deadline.getTime() >= earliest.getTime()) {
+      throw new ApiError(400, "报名截止时间必须早于最早时段的开始时间");
+    }
+    data.signupDeadline = deadline;
+  }
+
   const updated = await prisma.experiment.update({ where: { id }, data });
-  return ok({ id: updated.id, status: updated.status }, "已更新");
+  return ok({ id: updated.id, status: updated.status }, "已保存");
 });

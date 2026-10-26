@@ -192,7 +192,6 @@ async function main() {
       slotId: earlySlot.id,
       subjectId: subjects[0].id,
       status: "CONFIRMED",
-      checkinCode: "1111",
     },
   });
   await prisma.appointment.create({
@@ -201,7 +200,6 @@ async function main() {
       slotId: lateSlot.id,
       subjectId: subjects[1].id,
       status: "CONFIRMED",
-      checkinCode: "2222",
     },
   });
 
@@ -233,6 +231,88 @@ async function main() {
     "两条预约都被置为 CANCELLED_BY_RESEARCHER",
     earlyAppointment.status === "CANCELLED_BY_RESEARCHER" &&
       lateAppointment.status === "CANCELLED_BY_RESEARCHER",
+  );
+
+  console.log("\n[5] 一键签到 → 主试确认到场 → 双方 +1");
+  const liveSlot = await prisma.slot.create({
+    data: {
+      experimentId: experiment.id,
+      startAt: new Date(now.getTime() - 10 * 60000),
+      endAt: new Date(now.getTime() + 20 * 60000),
+      capacity: 1,
+    },
+  });
+  const liveAppointment = await prisma.appointment.create({
+    data: {
+      experimentId: experiment.id,
+      slotId: liveSlot.id,
+      subjectId: subjects[2].id,
+      status: "CONFIRMED",
+    },
+  });
+  const { checkIn, verifyAttendance } = await import("../src/server/appointments");
+  const checked = await checkIn(liveAppointment.id, subjects[2].id, now);
+  check("签到不需要任何码，直接变成 CHECKED_IN", checked.status === "CHECKED_IN");
+
+  const subjectBefore = await prisma.user.findUniqueOrThrow({ where: { id: subjects[2].id } });
+  // 先降到 95，才能观察到 +1（满 100 时加分会被上限吃掉，这是预期行为）
+  await prisma.user.update({ where: { id: subjects[2].id }, data: { creditScore: 95 } });
+  const researcherBefore = await prisma.user.findUniqueOrThrow({ where: { id: researcher.id } });
+  const verified = await verifyAttendance(liveAppointment.id, researcher.id, now);
+  const subjectAfter = await prisma.user.findUniqueOrThrow({ where: { id: subjects[2].id } });
+  const researcherAfter = await prisma.user.findUniqueOrThrow({ where: { id: researcher.id } });
+  check("主试确认后置为 COMPLETED", verified.status === "COMPLETED");
+  check(
+    "被试 +1",
+    subjectAfter.creditScore - 95 === 1,
+    `95 → ${subjectAfter.creditScore}（原 ${subjectBefore.creditScore} 已是上限，先降到 95 再验）`,
+  );
+  check(
+    "主试也 +1",
+    researcherAfter.creditScore - researcherBefore.creditScore === 1,
+    `${researcherBefore.creditScore} → ${researcherAfter.creditScore}`,
+  );
+
+  console.log("\n[6] 申诉 48 小时无回应 → 自动成立并结算主试");
+  const appealSlot = await prisma.slot.create({
+    data: {
+      experimentId: experiment.id,
+      startAt: new Date(now.getTime() - 5 * 3600 * 1000),
+      endAt: new Date(now.getTime() - 4 * 3600 * 1000),
+      capacity: 1,
+      bookedCount: 1,
+    },
+  });
+  const appealAppointment = await prisma.appointment.create({
+    data: {
+      experimentId: experiment.id,
+      slotId: appealSlot.id,
+      subjectId: subjects[3].id,
+      status: "CHECKED_IN",
+      checkedInAt: new Date(now.getTime() - 4.5 * 3600 * 1000),
+      appealStatus: "PENDING",
+      appealAt: new Date(now.getTime() - 49 * 3600 * 1000),
+    },
+  });
+  const researcherBeforeAppeal = await prisma.user.findUniqueOrThrow({ where: { id: researcher.id } });
+  const { jobAutoUpholdAppeals } = await import("../src/server/scheduler");
+  const job = await jobAutoUpholdAppeals(now);
+  const appealAfter = await prisma.appointment.findUniqueOrThrow({
+    where: { id: appealAppointment.id },
+  });
+  const researcherAfterAppeal = await prisma.user.findUniqueOrThrow({ where: { id: researcher.id } });
+
+  check("到期申诉被处理", job.affected >= 1, `affected=${job.affected}`);
+  check("申诉状态置为 UPHELD", appealAfter.appealStatus === "UPHELD");
+  check("预约改为 CANCELLED_BY_RESEARCHER", appealAfter.status === "CANCELLED_BY_RESEARCHER");
+  check(
+    "主试被扣 2 分",
+    researcherBeforeAppeal.creditScore - researcherAfterAppeal.creditScore === 2,
+    `${researcherBeforeAppeal.creditScore} → ${researcherAfterAppeal.creditScore}`,
+  );
+  check(
+    "主试 noShowCount +1",
+    researcherAfterAppeal.noShowCount - researcherBeforeAppeal.noShowCount === 1,
   );
 
   await cleanup(TAG);

@@ -39,7 +39,6 @@ export type AppointmentItem = {
   id: string;
   status: string;
   group: "pending" | "confirmed" | "checkin" | "done" | "cancelled";
-  checkinCode: string | null;
   appealStatus: string | null;
   appealAt: string | null;
   checkedInAt: string | null;

@@ -49,7 +49,6 @@ export const GET = handle(async (_req: Request, { params }: Params) => {
     applicants: experiment.appointments.map((a) => ({
       id: a.id,
       status: a.status,
-      checkinCode: a.status === "CONFIRMED" || a.status === "CHECKED_IN" ? a.checkinCode : null,
       appealStatus: a.appealStatus,
       createdAt: a.createdAt.toISOString(),
       canConfirm: a.status === "AWAITING_RESEARCHER",

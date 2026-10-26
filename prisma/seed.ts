@@ -257,7 +257,6 @@ async function main() {
       slotId: pastSlot.id,
       subjectId: lin.id,
       status: "CHECKED_IN",
-      checkinCode: "4821",
       checkedInAt: new Date(Date.now() - 2.5 * 60 * 60 * 1000),
       appealStatus: "PENDING",
       appealAt: new Date(Date.now() - 60 * 60 * 1000),

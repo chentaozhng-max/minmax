@@ -19,10 +19,6 @@ export const CREDIT = {
   LATE_CANCEL_HOURS: 24,
   /** 被试免费取消的提前量（小时） */
   FREE_CANCEL_HOURS: 12,
-  /** 签到码允许错误次数 */
-  CHECKIN_MAX_ATTEMPTS: 3,
-  /** 签到锁定分钟数 */
-  CHECKIN_LOCK_MINUTES: 10,
   /** 主试信誉分低于此值时，实验在列表里降权 */
   LOW_CREDIT_THRESHOLD: 60,
 } as const;

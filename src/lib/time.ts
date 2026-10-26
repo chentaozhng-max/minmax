@@ -89,3 +89,19 @@ export function formatForPrompt(date: Date) {
   const wd = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][p.weekday];
   return `${p.month}月${p.day}日(${wd}) ${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
+
+/** "2026-10-28" + "14:00" → 上海时区对应的 UTC ISO */
+export function toShanghaiIso(date: string, time: string) {
+  return new Date(`${date}T${time}:00+08:00`).toISOString();
+}
+
+/** 上海时区的今天，YYYY-MM-DD */
+export function todayInShanghai() {
+  return new Date(Date.now() + TZ_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** 在 YYYY-MM-DD 上加天数 */
+export function addDaysToDateStr(dateStr: string, days: number) {
+  const base = new Date(`${dateStr}T00:00:00+08:00`);
+  return new Date(base.getTime() + days * DAY).toISOString().slice(0, 10);
+}

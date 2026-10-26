@@ -188,6 +188,17 @@ export const bookSlotSchema = z.object({
   slotId: z.string().min(1),
 });
 
-export const chatMessageSchema = z.object({
+export const editExperimentSchema = z.object({
+  title: z.string().min(4, "标题至少 4 个字").max(60, "标题最多 60 个字").optional(),
+  description: z.string().min(10, "描述至少 10 个字").optional(),
+  location: z.string().min(2, "请填写实验地点").optional(),
+  durationMin: z.number().int().min(5).max(480).optional(),
+  rewardText: z.string().min(1, "请填写报酬").optional(),
+  requirements: z.string().nullable().optional(),
+  minCreditScore: z.number().int().min(0, "信誉门槛 0–100").max(100, "信誉门槛 0–100").optional(),
+  needsVerification: z.boolean().optional(),
+  signupDeadline: z.string().optional(),
+  status: z.enum(["DRAFT", "PUBLISHED", "CLOSED", "FINISHED"]).optional(),
+});export const chatMessageSchema = z.object({
   content: z.string().min(1).max(500),
 });

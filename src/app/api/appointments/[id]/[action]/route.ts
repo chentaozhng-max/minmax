@@ -40,7 +40,7 @@ export const POST = handle(async (req: Request, { params }: Params) => {
     case "confirm": {
       const researcher = await requireRole("RESEARCHER");
       const updated = await confirmAsResearcher(id, researcher.id);
-      return ok({ id: updated.id, status: updated.status }, "已确认预约，签到码已生成");
+      return ok({ id: updated.id, status: updated.status }, "已确认预约");
     }
     case "confirm-subject": {
       const user = await requireUser();
@@ -49,7 +49,7 @@ export const POST = handle(async (req: Request, { params }: Params) => {
     }
     case "checkin": {
       const user = await requireUser();
-      const updated = await checkIn(id, user.id, String(body.code ?? "").trim());
+      const updated = await checkIn(id, user.id);
       return ok({ id: updated.id, status: updated.status }, "签到成功，等待主试确认到场");
     }
     case "verify": {

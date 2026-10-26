@@ -18,10 +18,6 @@ type BookInput = {
   source?: string;
 };
 
-function randomCode() {
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
 /**
  * 报名 / 锁定时段。
  * 防超卖核心：先在同一事务内用条件 UPDATE 抢占名额，影响行数为 0 直接失败。
@@ -95,9 +91,6 @@ export async function bookSlot(input: BookInput) {
           confirmedAt: null,
           checkedInAt: null,
           noShowAt: null,
-          checkinCode: randomCode(),
-          checkinAttempts: 0,
-          checkinLockedUntil: null,
           appealStatus: null,
           appealAt: null,
           appealResolvedAt: null,
@@ -112,7 +105,6 @@ export async function bookSlot(input: BookInput) {
         slotId: slot.id,
         subjectId: input.userId,
         status: AppointmentStatus.PENDING_SUBJECT_CONFIRM,
-        checkinCode: randomCode(),
         createdAt: now,
       },
     });
@@ -145,7 +137,7 @@ export async function confirmAsSubject(id: string, userId: string) {
   });
 }
 
-/** 主试确认预约 → CONFIRMED + 生成 4 位签到码 */
+/** 主试确认预约 → CONFIRMED */
 export async function confirmAsResearcher(id: string, researcherId: string) {
   const appointment = await loadAppointment(id);
   if (appointment.experiment.researcherId !== researcherId) throw new ApiError(403, "没有权限");
@@ -157,22 +149,19 @@ export async function confirmAsResearcher(id: string, researcherId: string) {
     data: {
       status: AppointmentStatus.CONFIRMED,
       confirmedAt: new Date(),
-      checkinCode: randomCode(),
     },
   });
 }
 
-/** 被试签到（4 位码，错 3 次锁 10 分钟） */
-export async function checkIn(id: string, userId: string, code: string, now = new Date()) {
+/**
+ * 被试到场签到：不需要签到码，一键签到。
+ * 只限制时间窗（开始前 30 分钟 ~ 结束），防止提前几百天点掉。
+ */
+export async function checkIn(id: string, userId: string, now = new Date()) {
   const appointment = await loadAppointment(id);
   if (appointment.subjectId !== userId) throw new ApiError(403, "只能操作自己的预约");
   if (appointment.status === AppointmentStatus.CHECKED_IN) throw new ApiError(400, "你已经签到过了");
   if (appointment.status !== AppointmentStatus.CONFIRMED) throw new ApiError(400, "当前状态无法签到");
-
-  if (appointment.checkinLockedUntil && appointment.checkinLockedUntil.getTime() > now.getTime()) {
-    const rest = Math.ceil((appointment.checkinLockedUntil.getTime() - now.getTime()) / 60000);
-    throw new ApiError(429, `签到已锁定，${rest} 分钟后重试`);
-  }
 
   const target = appointment.slot;
   if (now.getTime() < target.startAt.getTime() - 30 * 60 * 1000) {
@@ -180,30 +169,9 @@ export async function checkIn(id: string, userId: string, code: string, now = ne
   }
   if (now.getTime() > target.endAt.getTime()) throw new ApiError(400, "该时段已结束");
 
-  if (appointment.checkinCode !== code) {
-    const attempts = appointment.checkinAttempts + 1;
-    if (attempts >= CREDIT.CHECKIN_MAX_ATTEMPTS) {
-      await prisma.appointment.update({
-        where: { id },
-        data: {
-          checkinAttempts: 0,
-          checkinLockedUntil: new Date(now.getTime() + CREDIT.CHECKIN_LOCK_MINUTES * 60000),
-        },
-      });
-      throw new ApiError(429, `签到码错误 ${CREDIT.CHECKIN_MAX_ATTEMPTS} 次，已锁定 ${CREDIT.CHECKIN_LOCK_MINUTES} 分钟`);
-    }
-    await prisma.appointment.update({ where: { id }, data: { checkinAttempts: attempts } });
-    throw new ApiError(400, `签到码不正确，还可尝试 ${CREDIT.CHECKIN_MAX_ATTEMPTS - attempts} 次`);
-  }
-
   return prisma.appointment.update({
     where: { id },
-    data: {
-      status: AppointmentStatus.CHECKED_IN,
-      checkedInAt: now,
-      checkinAttempts: 0,
-      checkinLockedUntil: null,
-    },
+    data: { status: AppointmentStatus.CHECKED_IN, checkedInAt: now },
   });
 }
 

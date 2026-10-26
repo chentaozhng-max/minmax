@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Modal } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -37,7 +38,6 @@ type Detail = {
   applicants: {
     id: string;
     status: string;
-    checkinCode: string | null;
     appealStatus: string | null;
     createdAt: string;
     canConfirm: boolean;
@@ -142,6 +142,14 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
         title={data.title}
         subtitle={`${experimentStatusLabel[data.status as "PUBLISHED"] ?? data.status} · 已订 ${booked}/${total}`}
         back="/r/experiments"
+        right={
+          <Link
+            href={`/r/experiments/${experimentId}/edit`}
+            className="rounded-full px-2 py-1 text-[12px] text-moss"
+          >
+            编辑
+          </Link>
+        }
       />
 
       <div className="px-4 pt-3">
@@ -223,16 +231,6 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
                     {formatDayCN(new Date(a.slot.startAt))} {formatHM(new Date(a.slot.startAt))}–
                     {formatHM(new Date(a.slot.endAt))}
                   </p>
-
-                  {a.checkinCode ? (
-                    <div className="mt-2 flex items-center gap-2 rounded-[6px] border border-moss/25 bg-moss-tint px-2.5 py-1.5">
-                      <span className="text-[11px] text-moss">签到码</span>
-                      <span className="num text-[20px] font-semibold tracking-[0.28em] text-moss-deep">
-                        {a.checkinCode}
-                      </span>
-                      <span className="ml-auto text-[10px] text-moss/70">现场出示给被试</span>
-                    </div>
-                  ) : null}
 
                   {a.appealStatus === "PENDING" ? (
                     <div className="mt-2 rounded-[6px] border border-warn/25 bg-[#f8efdd] px-2.5 py-1.5">

@@ -549,7 +549,7 @@ export async function sendTurn(params: {
       if (sink.appointmentId) {
         push({
           role: "assistant",
-          content: `已锁定 ${sink.bookedLabel}，等待主试确认。确认后「我的预约」里会出现签到码入口。`,
+          content: `已锁定 ${sink.bookedLabel}，等待主试确认。确认后「我的预约」里会出现签到入口。`,
           createdAt: new Date().toISOString(),
         });
         break;

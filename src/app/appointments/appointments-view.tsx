@@ -8,7 +8,6 @@ import { PageHeader, Modal } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
 import { Countdown } from "@/components/countdown";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/experiment-card";
 import { toast } from "@/components/toast";
@@ -36,8 +35,6 @@ function tabOf(item: AppointmentItem): TabKey {
 
 export function AppointmentsView() {
   const [tab, setTab] = useState<TabKey>("pending");
-  const [checkinTarget, setCheckinTarget] = useState<AppointmentItem | null>(null);
-  const [code, setCode] = useState("");
   const [appealTarget, setAppealTarget] = useState<AppointmentItem | null>(null);
   const [appealNote, setAppealNote] = useState("");
   const queryClient = useQueryClient();
@@ -62,9 +59,7 @@ export function AppointmentsView() {
                 ? "申诉已提交"
                 : "已处理",
       );
-      setCheckinTarget(null);
       setAppealTarget(null);
-      setCode("");
       setAppealNote("");
       await queryClient.invalidateQueries({ queryKey: ["appointments"] });
     },
@@ -140,10 +135,7 @@ export function AppointmentsView() {
                 item={item}
                 busy={act.isPending}
                 onConfirm={() => act.mutate({ id: item.id, action: "confirm-subject" })}
-                onCheckin={() => {
-                  setCheckinTarget(item);
-                  setCode("");
-                }}
+                onCheckin={() => act.mutate({ id: item.id, action: "checkin" })}
                 onCancel={() => act.mutate({ id: item.id, action: "cancel" })}
                 onAppeal={() => {
                   setAppealTarget(item);
@@ -154,32 +146,6 @@ export function AppointmentsView() {
           </div>
         )}
       </div>
-
-      <Modal open={Boolean(checkinTarget)} onClose={() => setCheckinTarget(null)} title="输入签到码">
-        <p className="mb-3 text-[12px] leading-5 text-ink-soft">
-          向主试索取现场展示的 4 位签到码。连续输错 3 次会锁定 10 分钟。
-        </p>
-        <Input
-          inputMode="numeric"
-          maxLength={4}
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-          placeholder="4 位数字"
-          className="num text-center text-[22px] tracking-[0.4em]"
-        />
-        <Button
-          size="lg"
-          block
-          className="mt-3"
-          disabled={code.length !== 4}
-          loading={act.isPending}
-          onClick={() => {
-            if (checkinTarget) act.mutate({ id: checkinTarget.id, action: "checkin", body: { code } });
-          }}
-        >
-          签到
-        </Button>
-      </Modal>
 
       <Modal open={Boolean(appealTarget)} onClose={() => setAppealTarget(null)} title="申诉主试未到场">
         <p className="mb-3 text-[12px] leading-5 text-ink-soft">
@@ -287,9 +253,9 @@ function AppointmentCard({
         <p className="mt-2 rounded-[4px] bg-mist px-2 py-1 text-[11px] text-ink-soft">申诉被驳回</p>
       ) : null}
 
-      {item.status === "CONFIRMED" && item.checkinCode ? (
-        <p className="num mt-2 text-[11px] text-ink-soft">
-          你的签到码 <span className="text-[13px] font-semibold text-ink">{item.checkinCode}</span>
+      {item.status === "CONFIRMED" && item.canCheckIn ? (
+        <p className="mt-2 rounded-[4px] bg-moss-tint px-2 py-1 text-[11px] text-moss">
+          到现场后点「到场签到」，主试确认即完成
         </p>
       ) : null}
 
@@ -300,7 +266,7 @@ function AppointmentCard({
           </Button>
         ) : null}
         {item.status === "CONFIRMED" && item.canCheckIn ? (
-          <Button size="md" onClick={onCheckin}>
+          <Button size="md" loading={busy} onClick={onCheckin}>
             到场签到
           </Button>
         ) : null}

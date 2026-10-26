@@ -18,7 +18,6 @@ export const GET = handle(async () => {
       id: a.id,
       status: a.status,
       group: appointmentGroupOf(a.status as AppointmentStatus),
-      checkinCode: a.status === "CONFIRMED" || a.status === "CHECKED_IN" ? a.checkinCode : null,
       appealStatus: a.appealStatus,
       appealAt: a.appealAt?.toISOString() ?? null,
       checkedInAt: a.checkedInAt?.toISOString() ?? null,

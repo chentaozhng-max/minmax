@@ -2,41 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, Wand2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { SlotBatchGenerator, type SlotDraft } from "@/components/slot-batch-generator";
 import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
-import { formatDayCN, formatHM } from "@/lib/time";
+import { addDaysToDateStr, formatDayCN, formatHM, todayInShanghai } from "@/lib/time";
 import { cn } from "@/lib/cn";
-
-type SlotDraft = { startAt: string; endAt: string; capacity: number };
-
-const WEEKDAYS = [
-  { value: 1, label: "一" },
-  { value: 2, label: "二" },
-  { value: 3, label: "三" },
-  { value: 4, label: "四" },
-  { value: 5, label: "五" },
-  { value: 6, label: "六" },
-  { value: 0, label: "日" },
-];
-
-/** "2026-10-28" + "14:00" → 上海时区对应的 UTC ISO */
-function toIso(date: string, time: string) {
-  return new Date(`${date}T${time}:00+08:00`).toISOString();
-}
-
-function todayInShanghai() {
-  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-}
-
-function addDays(dateStr: string, days: number) {
-  const d = new Date(`${dateStr}T00:00:00+08:00`);
-  return new Date(d.getTime() + days * 86400000).toISOString().slice(0, 10);
-}
 
 export function NewExperimentForm() {
   const router = useRouter();
@@ -53,16 +28,9 @@ export function NewExperimentForm() {
   const [requirements, setRequirements] = useState("");
   const [minCreditScore, setMinCreditScore] = useState("0");
   const [needsVerification, setNeedsVerification] = useState(true);
-  const [deadline, setDeadline] = useState(`${addDays(todayInShanghai(), 3)}T23:59`);
+  const [deadline, setDeadline] = useState(`${addDaysToDateStr(todayInShanghai(), 3)}T23:59`);
 
   const [slots, setSlots] = useState<SlotDraft[]>([]);
-  const [fromDate, setFromDate] = useState(addDays(todayInShanghai(), 1));
-  const [toDate, setToDate] = useState(addDays(todayInShanghai(), 5));
-  const [weekdays, setWeekdays] = useState<number[]>([1, 3]);
-  const [startTime, setStartTime] = useState("14:00");
-  const [endTime, setEndTime] = useState("17:00");
-  const [segment, setSegment] = useState("30");
-  const [capacity, setCapacity] = useState("1");
 
   const grouped = useMemo(() => {
     const map = new Map<string, SlotDraft[]>();
@@ -75,36 +43,7 @@ export function NewExperimentForm() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [slots]);
 
-  function generate() {
-    const seg = Number(segment);
-    const cap = Number(capacity);
-    if (!seg || seg < 5) return toast("每段至少 5 分钟", "error");
-    if (!cap || cap < 1) return toast("容量至少 1", "error");
-    if (endTime <= startTime) return toast("结束时间要晚于开始时间", "error");
-
-    const generated: SlotDraft[] = [];
-    let cursor = fromDate;
-    let guard = 0;
-    while (cursor <= toDate && guard < 90) {
-      guard += 1;
-      const weekday = new Date(`${cursor}T12:00:00+08:00`).getDay();
-      if (weekdays.includes(weekday)) {
-        let minuteCursor = toMinutes(startTime);
-        const endMinute = toMinutes(endTime);
-        while (minuteCursor + seg <= endMinute) {
-          generated.push({
-            startAt: toIso(cursor, fromMinutes(minuteCursor)),
-            endAt: toIso(cursor, fromMinutes(minuteCursor + seg)),
-            capacity: cap,
-          });
-          minuteCursor += seg;
-        }
-      }
-      cursor = addDays(cursor, 1);
-    }
-
-    if (generated.length === 0) return toast("这个范围里没有生成时段，检查一下星期和起止时间", "error");
-
+  function mergeSlots(generated: SlotDraft[]) {
     setSlots((prev) => {
       const keys = new Set(prev.map((s) => s.startAt));
       const merged = [...prev];
@@ -290,73 +229,7 @@ export function NewExperimentForm() {
 
         {step === 2 ? (
           <div className="space-y-3">
-            <div className="rounded-card border border-line bg-surface p-3">
-              <div className="mb-2 flex items-center gap-1.5">
-                <Wand2 size={14} className="text-moss" strokeWidth={2} />
-                <p className="text-[13px] font-medium text-ink">批量生成</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="从">
-                  <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-                </Field>
-                <Field label="到">
-                  <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-                </Field>
-              </div>
-
-              <div className="mt-2">
-                <span className="mb-1.5 block text-[13px] font-medium text-ink">每周哪几天</span>
-                <div className="flex gap-1.5">
-                  {WEEKDAYS.map((d) => (
-                    <button
-                      key={d.value}
-                      type="button"
-                      onClick={() =>
-                        setWeekdays((prev) =>
-                          prev.includes(d.value) ? prev.filter((v) => v !== d.value) : [...prev, d.value],
-                        )
-                      }
-                      className={cn(
-                        "h-8 flex-1 rounded-[6px] border text-[12px]",
-                        weekdays.includes(d.value)
-                          ? "border-moss bg-moss text-white"
-                          : "border-line bg-surface text-ink-soft",
-                      )}
-                    >
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Field label="开始">
-                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-                </Field>
-                <Field label="结束">
-                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-                </Field>
-                <Field label="每段分钟">
-                  <Input
-                    inputMode="numeric"
-                    value={segment}
-                    onChange={(e) => setSegment(e.target.value.replace(/\D/g, ""))}
-                  />
-                </Field>
-                <Field label="每段容量">
-                  <Input
-                    inputMode="numeric"
-                    value={capacity}
-                    onChange={(e) => setCapacity(e.target.value.replace(/\D/g, ""))}
-                  />
-                </Field>
-              </div>
-
-              <Button size="md" block className="mt-3" onClick={generate}>
-                一键生成时段
-              </Button>
-            </div>
+            <SlotBatchGenerator defaultSegment={Number(durationMin) || 30} onGenerate={mergeSlots} />
 
             <div className="flex items-baseline justify-between">
               <h3 className="section-title">
@@ -490,15 +363,4 @@ export function NewExperimentForm() {
       <TabBar role="RESEARCHER" />
     </main>
   );
-}
-
-function toMinutes(time: string) {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
-}
-
-function fromMinutes(total: number) {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
