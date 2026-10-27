@@ -8,6 +8,12 @@ import { writeFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+/** 已发布的应用需要 sharecode 才放行，用 SHARECODE 环境变量传即可自动附加 */
+const SHARE = process.env.SHARECODE || "";
+const withShare = (pathPart) => {
+  if (!SHARE || pathPart.includes("sharecode=")) return pathPart;
+  return `${pathPart}${pathPart.includes("?") ? "&" : "?"}sharecode=${SHARE}`;
+};
 const PORT = 9333;
 
 const [, , baseUrl = "http://localhost:3100", outDir = "shots", listFile = "shots/pages.txt"] =
@@ -101,6 +107,38 @@ async function main() {
     const cdp = new CDP(ws);
 
     for (const page of pages) {
+      // 特殊指令：login <手机号> → 在页面里走真实登录接口，Cookie 留在浏览器 profile 里，
+      // 后面所有页面都带登录态。线上没有 /api/dev/login 时用这个。
+      if (page.name === "login") {
+        const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+        const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+        await cdp.send("Page.enable", {}, sessionId);
+        await cdp.send("Page.navigate", { url: `${baseUrl}${withShare("/")}` }, sessionId);
+        await sleep(1200);
+        const out = await cdp.send(
+          "Runtime.evaluate",
+          {
+            expression: `(async () => {
+              const phone = ${JSON.stringify(page.urlPath.trim())};
+              const h = { "Content-Type": "application/json" };
+              const a = await fetch("/api/auth/send-code", { method: "POST", headers: h, body: JSON.stringify({ phone }) });
+              const b = await fetch("/api/auth/login", { method: "POST", headers: h, body: JSON.stringify({ phone, code: "123456" }) });
+              const d = await b.json().catch(() => ({}));
+              return { send: a.status, login: b.status, name: d?.data?.name ?? null, role: d?.data?.role ?? null };
+            })()`,
+            returnByValue: true,
+            awaitPromise: true,
+          },
+          sessionId,
+        );
+        const v = out.result.value;
+        console.log(
+          `${v.name ? "ok      " : "FAIL    "} login ${page.urlPath.padEnd(12)} ${v.name ?? ""} ${v.role ?? ""} (send=${v.send} login=${v.login})`,
+        );
+        await cdp.send("Target.closeTarget", { targetId });
+        continue;
+      }
+
       const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
       const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
 
@@ -111,7 +149,7 @@ async function main() {
         sessionId,
       );
 
-      const url = `${baseUrl}${page.urlPath}`;
+      const url = `${baseUrl}${withShare(page.urlPath)}`;
       await cdp.send("Page.navigate", { url }, sessionId);
       await sleep(1800);
 
