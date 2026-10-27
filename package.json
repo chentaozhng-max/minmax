@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/next-run.mjs dev -p 3000",
     "build": "prisma generate && node scripts/next-run.mjs build --turbopack",
-    "start": "node scripts/next-run.mjs start -p 3000",
+    "start": "node scripts/prepare-db.mjs && node scripts/build-if-needed.mjs && node scripts/next-run.mjs start",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
