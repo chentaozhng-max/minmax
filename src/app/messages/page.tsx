@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
 import { EmptyState } from "@/components/experiment-card";
 import { parseMessages } from "@/lib/domain";
+import { listThreads } from "@/server/dm";
+import { ThreadList } from "./thread-list";
 import { formatDateTimeCN } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 
@@ -24,11 +26,22 @@ export default async function MessagesPage() {
     include: { experiment: { include: { researcher: true } } },
     orderBy: { updatedAt: "desc" },
   });
+  const threads = await listThreads(session.sub, "SUBJECT");
 
   return (
     <main className="shell tabbar-space">
       <PageHeader title="消息" back="auto" profile={{ role: "SUBJECT" }} />
       <div className="px-4 pt-3">
+        <h2 className="section-title mb-2">和主试的对话</h2>
+        {threads.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line bg-surface/60 px-4 py-5 text-center text-[12px] text-ink-soft">
+            还没有。在实验详情页点主试头像，就能直接跟他说句话。
+          </p>
+        ) : (
+          <ThreadList threads={threads} hrefBase="/messages" />
+        )}
+
+        <h2 className="section-title mb-2 mt-5">排期助手</h2>
         {sessions.length === 0 ? (
           <EmptyState
             title="还没有和排期助手聊过"

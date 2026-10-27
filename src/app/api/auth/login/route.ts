@@ -47,6 +47,7 @@ export const POST = handle(async (req: Request) => {
     name: user.name,
     role: user.role,
     studentVerified: user.studentVerified,
+      profileCompleted: user.profileCompleted,
     creditScore: user.creditScore,
   });
   return attachAuthCookies(res, access, refresh, isSecureRequest(req));

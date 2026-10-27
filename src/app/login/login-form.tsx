@@ -60,8 +60,12 @@ export function LoginForm() {
     }
     setLoading(true);
     try {
-      const data = await postJson<{ role: string }>("/api/auth/login", { phone, code });
-      router.replace(data.role === "RESEARCHER" ? "/r/experiments" : "/");
+      const data = await postJson<{ role: string; profileCompleted: boolean }>(
+        "/api/auth/login",
+        { phone, code },
+      );
+      if (!data.profileCompleted) router.replace("/onboarding");
+      else router.replace(data.role === "RESEARCHER" ? "/r/experiments" : "/");
     } catch (error) {
       toast(error instanceof Error ? error.message : "登录失败", "error");
       setLoading(false);
@@ -79,22 +83,22 @@ export function LoginForm() {
         心理学实验的报名与排期。被试说什么时候有空，剩下的交给排期助手。
       </p>
 
-      {/* 一周时段的抽象刻度：这个产品的核心对象就是"格子里的时间" */}
-      <div className="mt-7 flex items-end gap-1.5" aria-hidden>
-        {[3, 8, 5, 9, 4, 6, 2].map((h, i) => (
-          <span
-            key={i}
-            className="w-full rounded-[2px]"
-            style={{
-              height: 8 + h * 3,
-              background: i === 3 ? "var(--moss)" : "var(--moss-tint)",
-            }}
+      {/* 角色插画：一眼看出"你现在是哪种身份" */}
+      <div className="mt-6 flex justify-center">
+        <div className="h-[148px] w-[148px] overflow-hidden rounded-full bg-mist">
+          <img
+            src={role === "SUBJECT" ? "/illustrations/subject.png" : "/illustrations/researcher.png"}
+            alt={role === "SUBJECT" ? "被试形象" : "主试形象"}
+            width={148}
+            height={148}
+            className="h-full w-full object-cover object-[50%_12%]"
           />
-        ))}
+        </div>
       </div>
 
-      <div className="mt-8">
-        <div className="mb-4 inline-flex rounded-pill border border-line bg-surface p-0.5">
+      <div className="mt-5">
+        <div className="mb-4 flex justify-center">
+          <div className="inline-flex rounded-pill border border-line bg-surface p-0.5">
           {(["SUBJECT", "RESEARCHER"] as const).map((r) => (
             <button
               key={r}
@@ -107,6 +111,7 @@ export function LoginForm() {
               {r === "SUBJECT" ? "我是被试" : "我是主试"}
             </button>
           ))}
+          </div>
         </div>
 
         <div className="space-y-3">

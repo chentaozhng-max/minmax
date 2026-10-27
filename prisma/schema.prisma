@@ -29,6 +29,12 @@ model User {
   eduEmail        String?
   verifiedAt      DateTime?
 
+  // 资料完善（首次进入的引导，对应招聘类 App 的"完善资料"流程）
+  profileCompleted Boolean @default(false)
+  grade            String? // 被试：年级
+  interests        String? // 感兴趣的研究方向，逗号分隔
+  timePreference   String? // 常有空的时间段，逗号分隔
+
   // 信誉分（被试与主试共用，按 role 解释）
   creditScore Int       @default(100)
   noShowCount Int       @default(0)
@@ -40,6 +46,11 @@ model User {
   appointments Appointment[]
   creditEvents CreditEvent[]
   chatSessions ChatSession[]
+
+  // 私信：被试发起、主试接收
+  threadsAsSubject    DirectThread[] @relation("ThreadSubject")
+  threadsAsResearcher DirectThread[] @relation("ThreadResearcher")
+  directMessages      DirectMessage[]
 
   @@index([role])
 }
@@ -153,4 +164,39 @@ model VerifyCode {
   createdAt DateTime @default(now())
 
   @@index([target, purpose])
+}
+
+// ── 被试 ↔ 主试 私信 ─────────────────────────────
+// 一个人跟同一个主试只开一条线程（unique），从哪个实验发起的记在 experimentId 上。
+model DirectThread {
+  id           String  @id @default(cuid())
+  subjectId    String
+  researcherId String
+  experimentId String?
+
+  createdAt     DateTime  @default(now())
+  lastMessageAt DateTime?
+
+  subject    User            @relation("ThreadSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  researcher User            @relation("ThreadResearcher", fields: [researcherId], references: [id], onDelete: Cascade)
+  messages   DirectMessage[]
+
+  @@unique([subjectId, researcherId])
+  @@index([researcherId, lastMessageAt])
+  @@index([subjectId, lastMessageAt])
+}
+
+model DirectMessage {
+  id       String @id @default(cuid())
+  threadId String
+  senderId String
+  content  String
+
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+
+  thread DirectThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
 }

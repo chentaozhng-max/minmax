@@ -15,7 +15,7 @@ const SUBJECT_TABS = [
 const RESEARCHER_TABS = [
   { href: "/r/experiments", label: "我的实验", icon: FlaskConical },
   { href: "/r/experiments/new", label: "发布", icon: PlusCircle },
-  { href: "/r/appeals", label: "申诉", icon: Inbox },
+  { href: "/r/messages", label: "消息", icon: MessageCircle },
   { href: "/r/profile", label: "我的", icon: User },
 ];
 

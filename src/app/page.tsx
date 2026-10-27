@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentUser } from "@/lib/auth";
 import { requirePage } from "@/lib/page-auth";
@@ -35,6 +36,7 @@ export default async function HomePage({
   await requirePage("SUBJECT");
   const sp = await searchParams;
   const user = await currentUser();
+  if (user && !user.profileCompleted) redirect("/onboarding");
   const now = new Date();
 
   const cards = await listExperimentCards({

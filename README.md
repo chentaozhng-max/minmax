@@ -155,6 +155,8 @@ npm run accept # 22 项数据库级检查：防超卖 / 分时段 / 禁期阶梯
 | 15 | 申诉 48h 无回应自动 UPHELD 并结算主试 | ✅ 自动化通过（`jobAutoUpholdAppeals`） |
 | 16 | 主试信誉 <60 的实验排在末尾 + 灰标 | 已实现（`listExperimentCards` 排序），seed 里谢秋池那条可看 |
 | 17 | 刷新聊天页保留历史 | 已实现（`ChatSession.messages` 持久化） |
+| 18 | 被试在详情页点主试头像 → 直接开私信，主试端能看到 | 已实现（`DirectThread` / `DirectMessage`） |
+| 19 | 首次进入先完善资料，可跳过 | 已实现（`/onboarding`，种子账号「周叙」可演示） |
 
 ---
 

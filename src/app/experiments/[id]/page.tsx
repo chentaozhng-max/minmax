@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePage } from "@/lib/page-auth";
 import { currentUser } from "@/lib/auth";
@@ -12,6 +11,7 @@ import { formatDateTimeCN, formatDayCN, formatDayKey, formatHM } from "@/lib/tim
 import { remainingOf } from "@/server/experiments";
 import { cn } from "@/lib/cn";
 import { BookCta } from "./book-cta";
+import { ContactCard } from "./contact-card";
 
 /**
  * 实验详情页。信息结构参照招聘类 App 的职位详情：
@@ -118,29 +118,21 @@ export default async function ExperimentDetailPage({
 
       <Divider />
 
-      {/* 发布者 */}
-      <Link
-        href={`/researchers/${researcher.id}`}
-        className="flex items-center gap-3 px-4 py-3.5 active:bg-mist/60"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-moss-tint text-[16px] font-semibold text-moss">
-          {researcher.name.slice(0, 1)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-[15px] font-medium text-ink">{researcher.name}</span>
-            <VerifiedBadge verified={researcher.studentVerified} />
-          </span>
-          <span className="mt-0.5 block truncate text-[12px] leading-5 text-ink-soft">
-            {researcher.school ?? "未填写学校"}
-            {researcher.department ? ` · ${researcher.department}` : ""}
-          </span>
-          <span className="num mt-0.5 block text-[11px] leading-5 text-ink-soft">
-            信誉 {researcher.creditScore} · 在招 {researchCount} 个实验
-          </span>
-        </span>
-        <ChevronRight size={16} strokeWidth={2} className="shrink-0 text-ink-soft/50" />
-      </Link>
+      {/* 发布者：点头像直接开私信 */}
+      <ContactCard
+        experimentId={experiment.id}
+        researcher={{
+          id: researcher.id,
+          name: researcher.name,
+          school: researcher.school,
+          department: researcher.department,
+          studentVerified: researcher.studentVerified,
+          creditScore: researcher.creditScore,
+        }}
+      />
+      <p className="num px-4 pb-3 text-[11px] leading-5 text-ink-soft">
+        信誉 {researcher.creditScore} · 在招 {researchCount} 个实验
+      </p>
 
       <Divider />
 

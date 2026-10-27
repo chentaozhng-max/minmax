@@ -284,6 +284,18 @@ async function main() {
     },
   });
 
+  console.log("标记资料完善状态（周叙留作演示引导流程）…");
+  await prisma.user.updateMany({ data: { profileCompleted: true } });
+  await prisma.user.update({ where: { id: zhou.id }, data: { profileCompleted: false } });
+  await prisma.user.update({
+    where: { id: lin.id },
+    data: {
+      grade: "研一",
+      interests: "认知,社会",
+      timePreference: "工作日下午,周末上午",
+    },
+  });
+
   console.log("写入信誉分明细…");
   const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
   await prisma.creditEvent.createMany({
