@@ -11,6 +11,7 @@ export function PageHeader({
   sticky = true,
   subtitle,
   profile,
+  tone = "paper",
 }: {
   title: string;
   /** 传路径走 Link，传 "auto" 走浏览器历史 */
@@ -20,11 +21,14 @@ export function PageHeader({
   subtitle?: string;
   /** 右上角的个人中心入口 */
   profile?: { role: "SUBJECT" | "RESEARCHER" };
+  /** paper = 米白纸底（默认页），surface = 纯白页（高密度信息页） */
+  tone?: "paper" | "surface";
 }) {
   return (
     <header
       className={cn(
-        "z-30 flex h-12 items-center gap-1 border-b border-line bg-paper/95 px-2 backdrop-blur",
+        "z-30 flex h-12 items-center gap-1 border-b border-line px-2 backdrop-blur",
+        tone === "surface" ? "bg-surface" : "bg-paper/95",
         sticky && "sticky top-0",
       )}
     >

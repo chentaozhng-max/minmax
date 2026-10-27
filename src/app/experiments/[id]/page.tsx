@@ -1,17 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MapPin, Clock3, CalendarClock, Users } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requirePage } from "@/lib/page-auth";
 import { currentUser } from "@/lib/auth";
 import { checkEligibility } from "@/lib/credit";
-import { VerifiedBadge, StatusPill } from "@/components/ui/badge";
+import { VerifiedBadge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
 import { SlotGrid } from "@/components/slot-grid";
 import { formatDateTimeCN, formatDayCN, formatDayKey, formatHM } from "@/lib/time";
 import { remainingOf } from "@/server/experiments";
+import { cn } from "@/lib/cn";
 import { BookCta } from "./book-cta";
 
+/**
+ * 实验详情页。信息结构参照招聘类 App 的职位详情：
+ * 标题 + 报酬同行 → 元信息 → 发布者卡 → 信息表 → 正文 → 可选时段 → 底部固定 CTA。
+ * 白底 + 细分隔线 + 高信息密度，不再用一堆描边卡片。
+ */
 export default async function ExperimentDetailPage({
   params,
 }: {
@@ -62,6 +68,11 @@ export default async function ExperimentDetailPage({
       })
     : null;
 
+  const researcher = experiment.researcher;
+  const researchCount = await prisma.experiment.count({
+    where: { researcherId: researcher.id, status: "PUBLISHED" },
+  });
+
   const slotViews = openSlots.map((s) => ({
     id: s.id,
     startAt: s.startAt.toISOString(),
@@ -74,113 +85,149 @@ export default async function ExperimentDetailPage({
 
   const closed = experiment.status !== "PUBLISHED";
   const deadlinePassed = experiment.signupDeadline.getTime() <= now.getTime();
+  const remainingSeats = openSlots.reduce((n, s) => n + remainingOf(s), 0);
 
   return (
-    <main className="shell actionbar-space">
-      <PageHeader title="实验详情" back="auto" profile={{ role: "SUBJECT" }} />
+    <main className="shell actionbar-space bg-surface">
+      <PageHeader title="实验详情" back="auto" tone="surface" profile={{ role: "SUBJECT" }} />
 
-      <div className="px-4 pt-3">
-        <h2 className="text-[21px] font-semibold leading-[29px] tracking-[-0.01em] text-ink">
-          {experiment.title}
-        </h2>
-
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-ink-soft">
-          <Link href={`/researchers/${experiment.researcher.id}`} className="text-[13px] font-medium text-ink">
-            {experiment.researcher.name}
-          </Link>
-          <VerifiedBadge verified={experiment.researcher.studentVerified} />
-          <span className="text-line">|</span>
-          <span>{experiment.researcher.school ?? "未填写学校"}</span>
-          {experiment.researcher.department ? (
-            <span className="text-ink-soft/80">{experiment.researcher.department}</span>
-          ) : null}
-          <span className="num">信誉 {experiment.researcher.creditScore}</span>
+      {/* 标题 + 报酬 */}
+      <section className="px-4 pb-3.5 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-[21px] font-semibold leading-[29px] tracking-[-0.01em] text-ink">
+            {experiment.title}
+          </h2>
+          <span className="num shrink-0 text-[20px] font-semibold leading-[29px] text-clay">
+            {experiment.rewardText}
+          </span>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <StatusPill tone="clay">{experiment.rewardText}</StatusPill>
-          <StatusPill tone="grey">{experiment.durationMin} 分钟</StatusPill>
-          <StatusPill tone="grey">
-            {experiment.type === "GROUP" ? `团体 ${experiment.groupSize ?? 2} 人` : "一对一"}
-          </StatusPill>
+        <p className="mt-1.5 text-[13px] leading-5 text-ink-soft">
+          {experiment.durationMin} 分钟 · {experiment.location}
+        </p>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <Tag>{experiment.type === "GROUP" ? `团体 ${experiment.groupSize ?? 2} 人` : "一对一"}</Tag>
+          <Tag>{remainingSeats > 0 ? `剩 ${remainingSeats} 位` : "已约满"}</Tag>
           {experiment.minCreditScore > 0 ? (
-            <StatusPill tone="warn">信誉 ≥ {experiment.minCreditScore}</StatusPill>
+            <Tag tone="warn">信誉 ≥ {experiment.minCreditScore}</Tag>
           ) : null}
-          {experiment.needsVerification ? <StatusPill tone="verify">需学生认证</StatusPill> : null}
+          {experiment.needsVerification ? <Tag tone="verify">需学生认证</Tag> : null}
         </div>
+      </section>
 
-        <div className="mt-4 space-y-2 rounded-card border border-line bg-surface p-3.5">
-          <Row icon={<MapPin size={13} strokeWidth={1.8} />} label="地点" value={experiment.location} />
-          <Row
-            icon={<CalendarClock size={13} strokeWidth={1.8} />}
-            label="报名截止"
-            value={formatDateTimeCN(experiment.signupDeadline)}
-          />
-          <Row
-            icon={<Clock3 size={13} strokeWidth={1.8} />}
-            label="剩余时段"
-            value={`${openSlots.length} 段可约`}
-          />
-          <Row
-            icon={<Users size={13} strokeWidth={1.8} />}
+      <Divider />
+
+      {/* 发布者 */}
+      <Link
+        href={`/researchers/${researcher.id}`}
+        className="flex items-center gap-3 px-4 py-3.5 active:bg-mist/60"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-moss-tint text-[16px] font-semibold text-moss">
+          {researcher.name.slice(0, 1)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[15px] font-medium text-ink">{researcher.name}</span>
+            <VerifiedBadge verified={researcher.studentVerified} />
+          </span>
+          <span className="mt-0.5 block truncate text-[12px] leading-5 text-ink-soft">
+            {researcher.school ?? "未填写学校"}
+            {researcher.department ? ` · ${researcher.department}` : ""}
+          </span>
+          <span className="num mt-0.5 block text-[11px] leading-5 text-ink-soft">
+            信誉 {researcher.creditScore} · 在招 {researchCount} 个实验
+          </span>
+        </span>
+        <ChevronRight size={16} strokeWidth={2} className="shrink-0 text-ink-soft/50" />
+      </Link>
+
+      <Divider />
+
+      {/* 实验信息 */}
+      <section className="px-4 py-4">
+        <h3 className="text-[15px] font-semibold text-ink">实验信息</h3>
+        <dl className="mt-2.5 space-y-2 text-[13px] leading-5">
+          <InfoRow label="地点" value={experiment.location} />
+          <InfoRow label="报名截止" value={formatDateTimeCN(experiment.signupDeadline)} />
+          <InfoRow label="剩余时段" value={`${openSlots.length} 段`} />
+          <InfoRow
             label="最早可约"
             value={openSlots[0] ? formatDateTimeCN(openSlots[0].startAt) : "暂无"}
           />
-        </div>
+        </dl>
+      </section>
 
-        <section className="mt-5">
-          <h3 className="section-title mb-2">实验说明</h3>
-          <p className="whitespace-pre-line text-[14px] leading-[24px] text-ink">
-            {experiment.description}
-          </p>
-        </section>
+      <Divider />
+
+      {/* 正文 */}
+      <section className="px-4 py-4">
+        <h3 className="text-[15px] font-semibold text-ink">实验说明</h3>
+        <p className="mt-2 whitespace-pre-line text-[14px] leading-[24px] text-ink">
+          {experiment.description}
+        </p>
 
         {experiment.requirements ? (
-          <section className="mt-4">
-            <h3 className="section-title mb-2">参加要求</h3>
-            <p className="text-[14px] leading-[24px] text-ink">{experiment.requirements}</p>
-          </section>
+          <>
+            <h3 className="mt-4 text-[15px] font-semibold text-ink">参加要求</h3>
+            <p className="mt-2 text-[14px] leading-[24px] text-ink">{experiment.requirements}</p>
+          </>
         ) : null}
+      </section>
 
-        <section className="mt-5">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h3 className="section-title">可选时段</h3>
-            <span className="truncate text-[11px] text-ink-soft">点「立即预约」和助手约</span>
-          </div>
+      <Divider />
+
+      {/* 可选时段 */}
+      <section className="px-4 py-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-[15px] font-semibold text-ink">可选时段</h3>
+          <span className="num text-[12px] text-ink-soft">
+            {openSlots.length > 0 ? `共 ${openSlots.length} 段 · 半小时一档` : "暂无可约时段"}
+          </span>
+        </div>
+        <div className="mt-3">
           <SlotGrid
             slots={slotViews}
             value={[]}
             readOnly
             emptyHint="所有时段都已约满，可以到对话页登记候补"
           />
-        </section>
+        </div>
+        <p className="mt-3 text-[11px] leading-5 text-ink-soft">
+          点下方「立即预约」，和排期助手说一句你有空的时间就行。
+        </p>
+      </section>
 
-        {!eligibility.ok ? (
-          <div className="mt-4 rounded-card border border-danger/20 bg-[#f9e9e6] px-3 py-2.5 text-[12px] leading-5 text-danger">
-            {eligibility.message}
-            {eligibility.reason === "VERIFY" ? (
-              <Link href="/me/verify" className="ml-1 underline">
-                去认证
-              </Link>
-            ) : null}
-          </div>
-        ) : null}
+      {!eligibility.ok ? (
+        <div className="mx-4 mb-4 rounded-[6px] bg-[#f9e9e6] px-3 py-2.5 text-[12px] leading-5 text-danger">
+          {eligibility.message}
+          {eligibility.reason === "VERIFY" ? (
+            <Link href="/me/verify" className="ml-1 underline">
+              去认证
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
-        {closed ? (
-          <p className="mt-3 text-[12px] text-ink-soft">该实验已关闭，不再接受新的报名。</p>
-        ) : deadlinePassed ? (
-          <p className="mt-3 text-[12px] text-ink-soft">报名已截止。</p>
-        ) : null}
-      </div>
+      {closed ? (
+        <p className="px-4 pb-4 text-[12px] text-ink-soft">该实验已关闭，不再接受新的报名。</p>
+      ) : deadlinePassed ? (
+        <p className="px-4 pb-4 text-[12px] text-ink-soft">报名已截止。</p>
+      ) : (
+        <div className="h-4" />
+      )}
 
+      {/* 底部固定操作条 */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface">
         <div className="safe-bottom mx-auto flex h-16 w-full max-w-[480px] items-center gap-3 px-4">
-          <div className="w-[88px] shrink-0">
-            <p className="num truncate text-[17px] font-semibold leading-5 text-clay">
+          <div className="w-[92px] shrink-0">
+            <p className="num truncate text-[18px] font-semibold leading-6 text-clay">
               {experiment.rewardText}
             </p>
             <p className="num truncate text-[11px] leading-4 text-ink-soft">
-              {mine ? `已约 ${formatDayKey(mine.slot.startAt)} ${formatHM(mine.slot.startAt)}` : "未预约"}
+              {mine
+                ? `已约 ${formatDayKey(mine.slot.startAt)} ${formatHM(mine.slot.startAt)}`
+                : `${experiment.durationMin} 分钟`}
             </p>
           </div>
           <div className="flex-1">
@@ -207,12 +254,35 @@ export default async function ExperimentDetailPage({
   );
 }
 
-function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Divider() {
+  return <div className="h-2 bg-mist" aria-hidden />;
+}
+
+function Tag({
+  children,
+  tone = "grey",
+}: {
+  children: React.ReactNode;
+  tone?: "grey" | "warn" | "verify";
+}) {
+  const toneClass = {
+    grey: "bg-[#F4F5F2] text-ink-soft",
+    warn: "bg-[#f8efdd] text-warn",
+    verify: "bg-verify-tint text-verify",
+  }[tone];
+
   return (
-    <div className="flex items-start gap-2 text-[13px]">
-      <span className="mt-[3px] text-ink-soft">{icon}</span>
-      <span className="w-[60px] shrink-0 text-ink-soft">{label}</span>
-      <span className="flex-1 text-right text-ink">{value}</span>
+    <span className={cn("rounded-[3px] px-1.5 py-0.5 text-[11px] leading-4", toneClass)}>
+      {children}
+    </span>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-[64px] shrink-0 text-ink-soft">{label}</dt>
+      <dd className="min-w-0 flex-1 text-ink">{value}</dd>
     </div>
   );
 }
