@@ -80,12 +80,12 @@ export function OnboardingForm({
       <div className="px-5 pt-10">
         <p className="num text-[12px] text-ink-soft">第 {step} / 2 步</p>
         <h1 className="mt-2 text-[24px] font-semibold leading-8 tracking-[-0.01em] text-ink">
-          {step === 1 ? "完善资料，开始找实验" : "想做什么方向、什么时候有空"}
+          {step === 1 ? "完善资料，开始找实验" : "想做什么方向、常在哪个时段"}
         </h1>
         <p className="mt-2 text-[13px] leading-6 text-ink-soft">
           {step === 1
             ? "这些信息只用于匹配实验，不会公开展示。学校填了才能做学生认证。"
-            : "选几个方向和你常有空的时间，有对得上的实验会更容易约上。"}
+            : "选几个方向和你常在的时段，有对得上的实验会更容易看到。"}
         </p>
       </div>
 
@@ -170,7 +170,7 @@ export function OnboardingForm({
 
             <div>
               <p className="mb-1 text-[15px] font-semibold text-ink">
-                通常什么时候有空 <span className="text-[12px] font-normal text-ink-soft">可多选</span>
+                常来的时段 <span className="text-[12px] font-normal text-ink-soft">可多选</span>
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {TIMES.map((item) => (

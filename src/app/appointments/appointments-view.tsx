@@ -118,7 +118,7 @@ export function AppointmentsView() {
         ) : list.length === 0 ? (
           <EmptyState
             title={tab === "pending" ? "没有待确认的预约" : "这一栏是空的"}
-            description="去首页看看正在招募的实验，和排期助手聊两句就能约上。"
+            description="去首页看看正在招募的实验，挑一个时段就能约上。"
             action={
               <Link href="/">
                 <Button variant="outline" size="md">

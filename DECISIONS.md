@@ -115,3 +115,58 @@
     生成图右下角带「AI生成 / WORKBUDDY」水印，用 `scripts/crop-illustration.mjs`
     （无头 Edge 打开 PNG → 按比例裁切 → 截图）裁掉了，没引入任何图像库。
     **注意**：构图底部会被裁掉一点（鞋子），显示时用 `object-cover` 盖住。
+
+## 身份与信息架构（2026-10-27 改）
+
+26. **登录页选的「我是被试 / 我是主试」成为建号依据**
+    原来 `POST /api/auth/login` 完全忽略这个选择：新手机号一律建成 `role=SUBJECT`、
+    昵称 `被试XXXX`。表现是"我选主试登录，进去却是被试的「我的」页，也没有发布入口"。
+    现在 role 随请求传上来，新号按选择建（`主试XXXX` / `被试XXXX`）。
+    老账号与选择不一致时：**没发过实验、没有信誉流水**的空身份直接改过来（手滑选错也能救）；
+    已经有实验或信誉记录的账号拒登，并提示切回正确身份——不静默把主试的实验挂到被试名下。
+
+27. **主试底部栏中间放凸起的「+」发布，参照招聘类 App**
+    被试端仍是 4 个平铺 Tab。主试端改成 5 格：实验 / 消息 / **+发布** / 申诉 / 我的，
+    中间那颗是凸出导航栏的圆形按钮（moss 底 + 白色加号 + ring-surface 描边），点进 `/r/experiments/new`。
+    为此把「申诉」又放回 Tab（此前按第 23 条收进了「我的」）——5 格才对称，
+    而且申诉真有待办，比重复一个入口有用。
+
+28. **主试的「我的」不再复制被试那一版**
+    原来两页几乎逐行相同，只换了「发布过 / 累计未到场 / 信誉上限」三个数。
+    现在主试页第一屏是招募方视角：身份标「主试」、发布过 / 招募中 / 待我确认、
+    一张 moss 底的「发布新实验」主 CTA、有待办时在顶部插一条"X 条报名等你确认"、
+    快捷入口（我的实验 / 消息 / 申诉处理），信誉明细降到最后。
+
+29. **认证在两端叫法不同**
+    被试是「学生认证」（报名门槛），主试是「主试认证」（学校 + 学号/工号 + 教育邮箱）。
+    表单还是同一个 `VerifyForm`，传 `role` 换文案；实际校验逻辑不变，没有人脸识别。
+
+30. **文案去掉"被试说什么时候有空"这类口头语**
+    产品定位收敛成「心理学实验的报名与排期」：登录页副标题、详情页提示、选时段页开场白、
+    各处空状态全部改成"挑时段报名"的说法，「排期助手」只在内部与消息页作为"选时段的记录"出现。
+    功能没删：模糊时间解析、候选排序、LLM 降级表单都还在，只是不再宣称"你说有空它来排"。
+
+26. **构建时把环境注入的文件系统 shim 摘掉**
+    WorkBuddy 的 shell 通过 `NODE_OPTIONS` 注入 `node-language-shim.cjs` →
+    `node-safe-delete-shim.cjs`，它把 `fs.rmSync` 交给一个外部回收站程序执行。
+    `next build` 一开始要清空 `.next`（上万个小文件），回收站程序处理这种量级会
+    `spawnSync ... ETIMEDOUT`，或者**在构建已经开始写文件之后才删完**，于是报
+    `ENOENT ... _buildManifest.js.tmp.*` / `export/500.html` / `build-manifest.json`
+    这类"自己刚写的文件不见了"的错。
+    `scripts/next-run.mjs` 现在只把这一条 `--require` 从子进程的 `NODE_OPTIONS` 里摘掉，
+    其余 flag 原样保留（`KEEP_NODE_OPTIONS=1` 可关闭该行为）。
+    **排查特征**：构建日志里出现 `safe-delete` 或连续两次构建一次成功一次失败，就是它。
+
+27. **构建前必须先停服务**
+    `prisma generate` 要覆盖 `node_modules/.prisma/client/query_engine-windows.dll.node`，
+    服务还在跑时该 DLL 被占用，会 `EPERM: rename ... query_engine-windows.dll.node.tmp*`。
+    `npm start` 的兜底构建（`build-if-needed.mjs`）因此只在"没有服务在跑"时才安全。
+    另外判断构建是否可用不再只看 `BUILD_ID`，而是同时检查 `build-manifest.json` /
+    `routes-manifest.json` / `prerender-manifest.json` / `server/app-paths-manifest.json`，
+    避免中途失败的半成品被当成可用的构建。
+
+28. **本机 curl 要加 `--noproxy '*'`**
+    环境里设了 `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:59778`，访问 `localhost:3000`
+    会被代理转发，服务明明活着却返回 502（部分路径还因为代理缓存返回 200，更容易误判）。
+    本机自检一律用 `curl --noproxy '*' http://127.0.0.1:3000/...`。
+

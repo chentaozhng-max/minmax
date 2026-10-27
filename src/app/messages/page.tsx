@@ -11,7 +11,7 @@ import { formatDateTimeCN } from "@/lib/time";
 import { Button } from "@/components/ui/button";
 
 const STATE_LABEL: Record<string, string> = {
-  COLLECTING_AVAILABILITY: "在问你的空闲时间",
+  COLLECTING_AVAILABILITY: "正在选时段",
   PROPOSED: "已给出候选时段",
   BOOKED: "已约上",
   WAITLIST: "已登记候补",
@@ -41,11 +41,11 @@ export default async function MessagesPage() {
           <ThreadList threads={threads} hrefBase="/messages" />
         )}
 
-        <h2 className="section-title mb-2 mt-5">排期助手</h2>
+        <h2 className="section-title mb-2 mt-5">选时段的记录</h2>
         {sessions.length === 0 ? (
           <EmptyState
-            title="还没有和排期助手聊过"
-            description="在任一实验详情页点「立即预约」，就会开一条对话。"
+            title="还没有选时段的记录"
+            description="在任一实验详情页点「立即预约」，选过的时段会记在这里。"
             action={
               <Link href="/">
                 <Button variant="outline" size="md">

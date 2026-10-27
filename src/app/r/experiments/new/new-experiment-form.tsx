@@ -343,7 +343,7 @@ export function NewExperimentForm() {
             </div>
 
             <p className="text-[11px] leading-5 text-ink-soft">
-              发布后被试就能在列表里看到。排期助手只会在你开放的这些时段里撮合，不会自己加时间。
+              发布后被试就能在列表里看到。被试只能从你开放的这些时段里挑，系统不会自己加时间。
             </p>
           </div>
         ) : null}

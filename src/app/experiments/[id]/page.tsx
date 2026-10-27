@@ -182,11 +182,11 @@ export default async function ExperimentDetailPage({
             slots={slotViews}
             value={[]}
             readOnly
-            emptyHint="所有时段都已约满，可以到对话页登记候补"
+            emptyHint="所有时段都已约满，可以给主试留言问问有没有人取消"
           />
         </div>
         <p className="mt-3 text-[11px] leading-5 text-ink-soft">
-          点下方「立即预约」，和排期助手说一句你有空的时间就行。
+          点下方「立即预约」，选一个你能来的时段就行。
         </p>
       </section>
 

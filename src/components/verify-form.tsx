@@ -8,14 +8,18 @@ import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
 import { CheckCircle2 } from "lucide-react";
 
-/** 学生认证：被试端与主试端共用 */
+/** 身份认证：被试端与主试端共用，只是叫法不同（学生认证 / 主试认证） */
 export function VerifyForm({
   initial,
   done,
+  role = "SUBJECT",
 }: {
   initial: { school: string; studentId: string; eduEmail: string };
   done: boolean;
+  role?: "SUBJECT" | "RESEARCHER";
 }) {
+  const isResearcher = role === "RESEARCHER";
+  const title = isResearcher ? "主试认证" : "学生认证";
   const router = useRouter();
   const [school, setSchool] = useState(initial.school);
   const [studentId, setStudentId] = useState(initial.studentId);
@@ -30,10 +34,12 @@ export function VerifyForm({
       <div className="rounded-card border border-verify/25 bg-verify-tint p-4">
         <div className="flex items-center gap-2 text-verify">
           <CheckCircle2 size={17} strokeWidth={2} />
-          <span className="text-[15px] font-medium">已完成学生认证</span>
+          <span className="text-[15px] font-medium">已完成{title}</span>
         </div>
         <p className="mt-1.5 text-[12px] leading-5 text-verify/80">
-          你的姓名旁边会显示蓝色「已认证」角标，可以报名需要认证的实验。
+          {isResearcher
+            ? "你的姓名旁边会显示「已认证」角标，被试能看到这个实验出自认证过的主试。"
+            : "你的姓名旁边会显示蓝色「已认证」角标，可以报名需要认证的实验。"}
         </p>
         {initial.eduEmail ? (
           <p className="num mt-2 text-[11px] text-verify/70">{initial.eduEmail}</p>
@@ -44,7 +50,8 @@ export function VerifyForm({
 
   async function sendCode() {
     if (school.trim().length < 2) return toast("请填写学校全称", "error");
-    if (studentId.trim().length < 4) return toast("请填写学号", "error");
+    if (studentId.trim().length < 4)
+      return toast(isResearcher ? "请填写学号 / 工号" : "请填写学号", "error");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(eduEmail)) return toast("邮箱格式不正确", "error");
     setLoading(true);
     try {
@@ -83,7 +90,7 @@ export function VerifyForm({
           <Field label="学校">
             <Input value={school} onChange={(e) => setSchool(e.target.value)} placeholder="例：华东师范大学" />
           </Field>
-          <Field label="学号">
+          <Field label={isResearcher ? "学号 / 工号" : "学号"}>
             <Input value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="例：2023110205" />
           </Field>
           <Field label="教育邮箱" hint="支持 .edu.cn / .edu">

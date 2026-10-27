@@ -155,7 +155,7 @@ export function SlotGrid({
         })}
       </div>
       {multi ? (
-        <p className="mt-2 text-[11px] text-ink-soft">可勾选多个你有空的时段，系统会帮你挑一个定下来。</p>
+        <p className="mt-2 text-[11px] text-ink-soft">可勾选多个时段，系统会帮你定下一个。</p>
       ) : null}
     </div>
   );

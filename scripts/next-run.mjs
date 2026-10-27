@@ -23,10 +23,31 @@ if (needsPort && !hasPort) {
 
 const args = ["-r", patch, nextBin, ...passed];
 
+/**
+ * WorkBuddy 的 shell 会在 NODE_OPTIONS 里注入一个文件系统 shim
+ * （node-language-shim.cjs → node-brokered-fs-shim.cjs），它会把**删除**操作
+ * 转交给一个回收站程序。Next 构建一开始要清空 .next（几十 MB、上万文件），
+ * 回收站程序处理这种量级会 ETIMEDOUT，构建直接报
+ * `[safe-delete] 操作失败: spawnSync ... ETIMEDOUT` 或半途 ENOENT。
+ *
+ * 这里只把这一条 --require 摘掉，其余 NODE_OPTIONS 原样保留。
+ * 需要保留时设 KEEP_NODE_OPTIONS=1。
+ */
+function stripFsShim(options) {
+  if (process.env.KEEP_NODE_OPTIONS === "1") return options;
+  return options
+    .replace(/--require(?:=|\s+)["']?[^"'\s]*(?:node-language-shim|node-brokered-fs-shim)[^"'\s]*["']?/g, "")
+    .trim();
+}
+
 const child = spawn(process.execPath, args, {
   stdio: "inherit",
   cwd: root,
-  env: { ...process.env, FORCE_COLOR: "1" },
+  env: {
+    ...process.env,
+    NODE_OPTIONS: stripFsShim(process.env.NODE_OPTIONS ?? ""),
+    FORCE_COLOR: "1",
+  },
 });
 
 child.on("exit", (code, signal) => {

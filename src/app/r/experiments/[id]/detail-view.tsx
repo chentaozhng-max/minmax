@@ -194,7 +194,7 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
           <div className="mt-3 space-y-2">
             {data.applicants.length === 0 ? (
               <p className="rounded-card border border-dashed border-line bg-surface/60 px-4 py-10 text-center text-[12px] text-ink-soft">
-                还没有人报名。被试在详情页和排期助手聊完后会出现在这里。
+                还没有人报名。被试在详情页选好时段后会出现在这里。
               </p>
             ) : (
               data.applicants.map((a) => (

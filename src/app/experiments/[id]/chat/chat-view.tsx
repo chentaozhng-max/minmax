@@ -105,7 +105,7 @@ export function ChatView({
   return (
     <main className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-paper">
       <PageHeader
-        title="排期助手"
+        title="选时段"
         subtitle={`${experiment.researcherName} · ${experiment.title}`}
         back={`/experiments/${experimentId}`}
         profile={{ role: "SUBJECT" }}
@@ -120,8 +120,7 @@ export function ChatView({
         {messages.length === 0 ? (
           <>
             <AgentBubble>
-              这个实验要 {experiment.durationMin} 分钟，地点在{experiment.location}。你未来 7
-              天哪些时段方便？说得模糊一点也行，比如「周三下午」。
+              {`这个实验要 ${experiment.durationMin} 分钟，地点在${experiment.location}。下面的时段都能约，勾好点确认就行；想让我帮你挑，也可以说哪天方便。`}
             </AgentBubble>
             <div className="mb-3 ml-9 flex flex-wrap gap-1.5">
               {["周三下午", "明天上午", "这周都行", "你帮我挑"].map((text) => (
@@ -175,18 +174,20 @@ export function ChatView({
           </div>
         ) : null}
 
-        {formMode && !blocked ? (
+        {!blocked && view.availableSlots.length > 0 ? (
           <div className="mt-4 rounded-card border border-line bg-surface p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-[13px] font-medium text-ink">直接选时段</p>
-              <span className="text-[11px] text-ink-soft">可多选</span>
+              <span className="num text-[11px] text-ink-soft">
+                {view.availableSlots.length} 段可约 · 可多选
+              </span>
             </div>
             <SlotGrid
               slots={view.availableSlots}
               value={picked}
               onChange={setPicked}
               multi
-              emptyHint="目前没有空位，可以给主试留言说明你的时间"
+              emptyHint="目前没有空位，可以给主试留言问问"
             />
           </div>
         ) : null}
@@ -200,7 +201,7 @@ export function ChatView({
             暂不可预约
           </Button>
         </div>
-      ) : formMode ? (
+      ) : formMode || picked.length > 0 ? (
         <div className="border-t border-line bg-surface px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
           <Button
             size="lg"
@@ -221,7 +222,7 @@ export function ChatView({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.nativeEvent.isComposing) submitText();
               }}
-              placeholder="比如：周三下午有空"
+              placeholder="比如：周三下午"
               maxLength={500}
               className="h-11 flex-1 rounded-pill bg-[#F5F6F7] px-4 text-[14px] outline-none focus:bg-surface focus:ring-1 focus:ring-moss/40"
             />

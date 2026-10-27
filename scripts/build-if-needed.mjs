@@ -10,10 +10,26 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-if (existsSync(path.join(root, ".next", "BUILD_ID"))) {
+/**
+ * 只看 BUILD_ID 不够：构建中途失败时会留下 BUILD_ID 但缺 manifest，
+ * `next start` 起来后每个请求都 500。这里把几个必需产物一起查。
+ */
+const REQUIRED = [
+  "BUILD_ID",
+  "build-manifest.json",
+  "routes-manifest.json",
+  "prerender-manifest.json",
+  "server/app-paths-manifest.json",
+];
+
+const missing = REQUIRED.filter((file) => !existsSync(path.join(root, ".next", file)));
+
+if (missing.length === 0) {
   console.log("[build] 已有构建产物，跳过");
   process.exit(0);
 }
+
+console.log(`[build] 构建产物不完整，缺 ${missing.join(", ")}`);
 
 function run(args, label) {
   console.log(`[build] ${label}…`);

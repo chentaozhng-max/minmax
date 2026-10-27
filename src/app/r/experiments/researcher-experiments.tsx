@@ -82,7 +82,7 @@ export function ResearcherExperiments() {
         ) : rows.length === 0 ? (
           <EmptyState
             title="还没有实验"
-            description="发布第一个实验，设定好你能来的时段，剩下的撮合交给排期助手。"
+            description="发布第一个实验，开放你能来的时段，被试挑时段报名。"
             action={
               <Link href="/r/experiments/new">
                 <Button size="md">发布实验</Button>

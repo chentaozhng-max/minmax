@@ -11,6 +11,13 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
+/** 界面上出现的身份叫法，避免各处手写"主试/被试"写岔 */
+export const roleLabel: Record<string, string> = {
+  SUBJECT: "被试",
+  RESEARCHER: "主试",
+  ADMIN: "管理员",
+};
+
 export const ExperimentType = {
   INDIVIDUAL: "INDIVIDUAL",
   GROUP: "GROUP",
@@ -140,6 +147,8 @@ export function stringifyMessages(messages: ChatMessage[]): string {
 export const loginSchema = z.object({
   phone: z.string().regex(/^1\d{10}$/, "请输入 11 位手机号"),
   code: z.string().length(6, "验证码为 6 位"),
+  /** 登录页选的身份。老客户端不传时按已有账号的身份处理。 */
+  role: z.enum(["SUBJECT", "RESEARCHER"]).optional(),
 });
 
 export const sendCodeSchema = z.object({

@@ -62,7 +62,7 @@ export function LoginForm() {
     try {
       const data = await postJson<{ role: string; profileCompleted: boolean }>(
         "/api/auth/login",
-        { phone, code },
+        { phone, code, role },
       );
       if (!data.profileCompleted) router.replace("/onboarding");
       else router.replace(data.role === "RESEARCHER" ? "/r/experiments" : "/");
@@ -79,8 +79,8 @@ export function LoginForm() {
           PsyMatch
         </h1>
       </div>
-      <p className="mt-3 max-w-[19em] text-[14px] leading-6 text-ink-soft">
-        心理学实验的报名与排期。被试说什么时候有空，剩下的交给排期助手。
+      <p className="mt-3 max-w-[20em] text-[14px] leading-6 text-ink-soft">
+        心理学实验的报名与排期。主试发布实验和可约时段，被试挑一个时段报名，到点签到。
       </p>
 
       {/* 角色插画：一眼看出"你现在是哪种身份" */}
@@ -113,6 +113,11 @@ export function LoginForm() {
           ))}
           </div>
         </div>
+        <p className="mb-3 -mt-2 text-center text-[11px] text-ink-soft">
+          {role === "SUBJECT"
+            ? "报名实验 · 查看预约 · 到点签到"
+            : "发布实验 · 开放时段 · 确认报名"}
+        </p>
 
         <div className="space-y-3">
           <Input
