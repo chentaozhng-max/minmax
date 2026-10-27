@@ -23,6 +23,11 @@ if not exist ".next\BUILD_ID" (
 
 echo.
 echo Starting PsyMatch at http://localhost:3000
+echo.
+echo Phone access: run "ipconfig" in another window, find this PC's
+echo 172.x / 192.168.x address, then open http://THAT-IP:3000
+echo (phone must be on the same Wi-Fi / router).
+echo.
 echo Keep the server window open while using it.
 echo.
 
