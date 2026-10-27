@@ -83,7 +83,7 @@ export function AppointmentsView() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="我的预约" back="/" />
+      <PageHeader title="我的预约" back="auto" profile={{ role: "SUBJECT" }} />
 
       <div className="scroll-x sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">
         {TABS.map((t) => {

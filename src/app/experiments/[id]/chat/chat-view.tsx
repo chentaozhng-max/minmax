@@ -108,6 +108,7 @@ export function ChatView({
         title="排期助手"
         subtitle={`${experiment.researcherName} · ${experiment.title}`}
         back={`/experiments/${experimentId}`}
+        profile={{ role: "SUBJECT" }}
         right={
           <Link href="/appointments" className="px-2 text-[12px] text-moss">
             我的预约

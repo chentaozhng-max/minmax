@@ -11,7 +11,7 @@ export default async function ResearcherVerifyPage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="学生认证" back="/r/profile" />
+      <PageHeader title="学生认证" back="auto" profile={{ role: "RESEARCHER" }} />
       <div className="px-4 pt-4">
         <p className="mb-4 text-[13px] leading-6 text-ink-soft">
           主试同样需要学生认证。认证徽章会出现在你发布的每个实验卡片和报名者列表旁边。

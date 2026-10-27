@@ -48,6 +48,8 @@ export function ResearcherExperiments() {
     <main className="shell tabbar-space">
       <PageHeader
         title="我的实验"
+        back="auto"
+        profile={{ role: "RESEARCHER" }}
         right={
           <Link href="/r/experiments/new">
             <Button size="sm">发布</Button>

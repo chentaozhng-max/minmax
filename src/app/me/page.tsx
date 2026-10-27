@@ -42,7 +42,7 @@ export default async function MePage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="我的" back="/" />
+      <PageHeader title="我的" back="auto" />
 
       <div className="px-4 pt-3">
         <div className="rounded-card border border-line bg-surface p-4">

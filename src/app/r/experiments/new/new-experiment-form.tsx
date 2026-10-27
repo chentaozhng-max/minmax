@@ -28,7 +28,7 @@ export function NewExperimentForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
-  const [durationMin, setDurationMin] = useState("40");
+  const [durationMin, setDurationMin] = useState("30");
   const [rewardText, setRewardText] = useState("¥30");
   const [type, setType] = useState<"INDIVIDUAL" | "GROUP">("INDIVIDUAL");
   const [groupSize, setGroupSize] = useState("3");
@@ -120,7 +120,7 @@ export function NewExperimentForm() {
 
   return (
     <main className="shell with-actionbar">
-      <PageHeader title="发布实验" back="/r/experiments" />
+      <PageHeader title="发布实验" back="auto" profile={{ role: "RESEARCHER" }} />
 
       <div className="flex items-center gap-1 px-4 pt-3">
         {["基本信息", "时段", "确认"].map((label, i) => {

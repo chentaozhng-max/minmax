@@ -5,6 +5,8 @@ import { requirePage } from "@/lib/page-auth";
 import { listExperimentCards } from "@/server/experiments";
 import { ExperimentCard, ExperimentCardSkeleton, EmptyState } from "@/components/experiment-card";
 import { TabBar } from "@/components/tab-bar";
+import { BackButton } from "@/components/back-button";
+import { ProfileLink } from "@/components/profile-link";
 import { SearchBar } from "./search-bar";
 import { FilterChips } from "./filter-chips";
 import { CheckCircle2 } from "lucide-react";
@@ -56,6 +58,16 @@ export default async function HomePage({
 
   return (
     <main className="shell tabbar-space">
+      <div className="flex items-center gap-1 px-4 pb-1.5 pt-1.5">
+        <div className="-ml-2">
+          <BackButton fallback="/" />
+        </div>
+        <h1 className="text-[16px] font-semibold text-ink">找实验</h1>
+        <div className="ml-auto">
+          <ProfileLink role="SUBJECT" />
+        </div>
+      </div>
+
       <div className="sticky top-0 z-30 bg-paper/95 px-4 pb-2 pt-2 backdrop-blur">
         <Suspense fallback={<div className="h-11 rounded-pill bg-[#F5F6F7]" />}>
           <SearchBar initial={sp.keyword ?? ""} />

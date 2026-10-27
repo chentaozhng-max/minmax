@@ -46,7 +46,10 @@ export function SlotBatchGenerator({
   const [weekdays, setWeekdays] = useState<number[]>([1, 3]);
   const [startTime, setStartTime] = useState("14:00");
   const [endTime, setEndTime] = useState("17:00");
-  const [segment, setSegment] = useState(String(defaultSegment ?? 30));
+  // 时段长度向上取整到半小时：既保证能和实验时长对上，又让格子都是整点/半点
+  const [segment, setSegment] = useState(
+    String(Math.max(30, Math.ceil((defaultSegment ?? 30) / 30) * 30)),
+  );
   const [capacity, setCapacity] = useState(String(defaultCapacity));
 
   function generate() {

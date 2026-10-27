@@ -144,7 +144,8 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
     <main className="shell with-actionbar">
       <PageHeader
         title="编辑实验"
-        back={`/r/experiments/${experimentId}`}
+        back="auto"
+        profile={{ role: "RESEARCHER" }}
         right={
           <StatusPill tone={isPublished ? "moss" : "grey"}>
             {experimentStatusLabel[data.status as ExperimentStatus] ?? data.status}

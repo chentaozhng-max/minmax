@@ -46,7 +46,7 @@ export default async function ResearcherPage({ params }: { params: Promise<{ id:
 
   return (
     <main className="shell pb-10">
-      <PageHeader title="主试主页" back="/" />
+      <PageHeader title="主试主页" back="auto" profile={{ role: "SUBJECT" }} />
       <div className="px-4 pt-3">
         <div className="rounded-card border border-line bg-surface p-4">
           <div className="flex items-start gap-3">

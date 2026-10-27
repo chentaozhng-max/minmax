@@ -128,9 +128,9 @@ async function main() {
       researcherId: chen.id,
       title: "面孔吸引力判断实验",
       description:
-        "本实验研究人们如何在 500 毫秒内对面孔吸引力做出判断。你需要在电脑前对 120 组面孔打分，全程约 40 分钟，中途可休息。数据仅用于学术研究，匿名处理。",
+        "本实验研究人们如何在 500 毫秒内对面孔吸引力做出判断。你需要在电脑前对 120 组面孔打分，全程约 30 分钟，中途可休息。数据仅用于学术研究，匿名处理。",
       location: "俊秀楼 305 认知实验室",
-      durationMin: 40,
+      durationMin: 30,
       rewardText: "¥30",
       type: "INDIVIDUAL",
       requirements: "矫正视力正常；近三个月未参加过同类面孔实验。",
@@ -141,23 +141,20 @@ async function main() {
     },
   });
 
-  // 三个下午，每天 4 个 40 分钟时段（14:00 / 14:50 / 15:40 / 16:30），容量 1
-  const slotStarts: Date[] = [];
+  // 三个下午，每天 6 个半小时时段（14:00–16:30），容量 1
   for (const day of [1, 2, 3]) {
     for (const hour of [14, 15, 16]) {
-      slotStarts.push(shanghai(day, hour, 0));
-      slotStarts.push(shanghai(day, hour, 50));
+      for (const minute of [0, 30]) {
+        await prisma.slot.create({
+          data: {
+            experimentId: exp1.id,
+            startAt: shanghai(day, hour, minute),
+            endAt: shanghai(day, hour, minute + 30),
+            capacity: 1,
+          },
+        });
+      }
     }
-  }
-  for (const startAt of slotStarts.slice(0, 10)) {
-    await prisma.slot.create({
-      data: {
-        experimentId: exp1.id,
-        startAt,
-        endAt: new Date(startAt.getTime() + 40 * 60 * 1000),
-        capacity: 1,
-      },
-    });
   }
 
   console.log("创建实验 2：团体决策（容量 3）…");
@@ -194,9 +191,9 @@ async function main() {
       researcherId: chen.id,
       title: "睡眠质量与情绪调节问卷",
       description:
-        "填写一组标准化问卷并完成 15 分钟的电脑任务，用于研究睡眠质量对情绪调节策略的影响。",
+        "填写一组标准化问卷并完成 15 分钟的电脑任务，用于研究睡眠质量对情绪调节策略的影响，全程约 30 分钟。",
       location: "线上（腾讯会议）",
-      durationMin: 25,
+      durationMin: 30,
       rewardText: "1 学分",
       type: "INDIVIDUAL",
       minCreditScore: 0,
@@ -205,15 +202,17 @@ async function main() {
       status: "PUBLISHED",
     },
   });
-  for (const hour of [10, 11, 15, 16, 20]) {
-    await prisma.slot.create({
-      data: {
-        experimentId: exp3.id,
-        startAt: shanghai(2, hour, 0),
-        endAt: shanghai(2, hour, 25),
-        capacity: 2,
-      },
-    });
+  for (const hour of [10, 15, 20]) {
+    for (const minute of [0, 30]) {
+      await prisma.slot.create({
+        data: {
+          experimentId: exp3.id,
+          startAt: shanghai(2, hour, minute),
+          endAt: shanghai(2, hour, minute + 30),
+          capacity: 2,
+        },
+      });
+    }
   }
 
   console.log("创建实验 4：低信誉主试的实验（列表降权）…");
@@ -246,7 +245,7 @@ async function main() {
     data: {
       experimentId: exp1.id,
       startAt: shanghai(-5, 14, 0),
-      endAt: shanghai(-5, 14, 40),
+      endAt: shanghai(-5, 14, 30),
       capacity: 1,
       bookedCount: 1,
     },
@@ -267,7 +266,7 @@ async function main() {
     data: {
       experimentId: exp3.id,
       startAt: shanghai(-1, 15, 0),
-      endAt: shanghai(-1, 15, 25),
+      endAt: shanghai(-1, 15, 30),
       capacity: 1,
       bookedCount: 1,
     },

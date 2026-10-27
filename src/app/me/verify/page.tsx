@@ -11,7 +11,7 @@ export default async function VerifyPage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="学生认证" back="/me" />
+      <PageHeader title="学生认证" back="auto" profile={{ role: "SUBJECT" }} />
       <div className="px-4 pt-4">
         <p className="mb-4 text-[13px] leading-6 text-ink-soft">
           认证只为确认你是本校在读学生，信息不会公开展示。认证后姓名旁会出现蓝色角标，

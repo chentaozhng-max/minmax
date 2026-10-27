@@ -53,7 +53,7 @@ export function AppealsView() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="申诉处理" back="/r/experiments" />
+      <PageHeader title="申诉处理" back="auto" profile={{ role: "RESEARCHER" }} />
 
       <div className="px-4 pt-3">
         <div className="mb-2 flex items-baseline justify-between">

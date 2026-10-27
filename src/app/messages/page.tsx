@@ -27,7 +27,7 @@ export default async function MessagesPage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="消息" back="/" />
+      <PageHeader title="消息" back="auto" profile={{ role: "SUBJECT" }} />
       <div className="px-4 pt-3">
         {sessions.length === 0 ? (
           <EmptyState

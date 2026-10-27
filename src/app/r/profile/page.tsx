@@ -26,7 +26,7 @@ export default async function ResearcherProfilePage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="我的" back="/r/experiments" />
+      <PageHeader title="我的" back="auto" />
 
       <div className="px-4 pt-3">
         <div className="rounded-card border border-line bg-surface p-4">

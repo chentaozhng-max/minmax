@@ -77,7 +77,7 @@ export default async function ExperimentDetailPage({
 
   return (
     <main className="shell actionbar-space">
-      <PageHeader title="实验详情" back="/" />
+      <PageHeader title="实验详情" back="auto" profile={{ role: "SUBJECT" }} />
 
       <div className="px-4 pt-3">
         <h2 className="text-[21px] font-semibold leading-[29px] tracking-[-0.01em] text-ink">
@@ -123,8 +123,8 @@ export default async function ExperimentDetailPage({
           />
           <Row
             icon={<Users size={13} strokeWidth={1.8} />}
-            label="剩余名额"
-            value={`${openSlots.reduce((n, s) => n + remainingOf(s), 0)} 个`}
+            label="最早可约"
+            value={openSlots[0] ? formatDateTimeCN(openSlots[0].startAt) : "暂无"}
           />
         </div>
 

@@ -144,7 +144,8 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
       <PageHeader
         title={data.title}
         subtitle={`${experimentStatusLabel[data.status as "PUBLISHED"] ?? data.status} · 已订 ${booked}/${total}`}
-        back="/r/experiments"
+        back="auto"
+        profile={{ role: "RESEARCHER" }}
         right={
           <Link
             href={`/r/experiments/${experimentId}/edit`}

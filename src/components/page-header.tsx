@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { BackButton } from "@/components/back-button";
+import { ProfileLink } from "@/components/profile-link";
 
 export function PageHeader({
   title,
@@ -8,12 +10,16 @@ export function PageHeader({
   right,
   sticky = true,
   subtitle,
+  profile,
 }: {
   title: string;
+  /** 传路径走 Link，传 "auto" 走浏览器历史 */
   back?: string;
   right?: React.ReactNode;
   sticky?: boolean;
   subtitle?: string;
+  /** 右上角的个人中心入口 */
+  profile?: { role: "SUBJECT" | "RESEARCHER" };
 }) {
   return (
     <header
@@ -22,11 +28,13 @@ export function PageHeader({
         sticky && "sticky top-0",
       )}
     >
-      {back ? (
+      {back === "auto" ? (
+        <BackButton />
+      ) : back ? (
         <Link
           href={back}
           aria-label="返回"
-          className="press flex h-9 w-9 items-center justify-center rounded-full text-ink"
+          className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink"
         >
           <ChevronLeft size={22} strokeWidth={1.9} />
         </Link>
@@ -37,7 +45,8 @@ export function PageHeader({
         <h1 className="truncate text-[16px] font-semibold leading-6 text-ink">{title}</h1>
         {subtitle ? <p className="truncate text-[11px] text-ink-soft">{subtitle}</p> : null}
       </div>
-      {right ? <div className="flex items-center gap-1 pr-1">{right}</div> : null}
+      {right ? <div className="flex shrink-0 items-center gap-1 pr-1">{right}</div> : null}
+      {profile ? <ProfileLink role={profile.role} /> : null}
     </header>
   );
 }
