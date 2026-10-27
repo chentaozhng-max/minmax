@@ -82,3 +82,9 @@
     所有页面共用 `PageHeader`：`back` 支持传路径或 `"auto"`（走浏览器历史，Tab 页用这个，避免
     "返回"永远跳回首页）；`profile` 传角色就渲染右上角头像入口（被试 → /me，主试 → /r/profile）。
     个人中心页自己不显示这个入口。首页原本没有顶栏（只有搜索框），补了一行「返回 + 找实验 + 头像」。
+
+21. **Cookie 的 Secure 按请求协议决定，不按 NODE_ENV**
+    原来 `secure: NODE_ENV === "production"`。用 `npm start` 起生产构建、手机通过
+    `http://172.30.x.x:3000` 打开时，浏览器会直接丢弃 Secure Cookie——表现是"登录成功后
+    又跳回登录页"。改为 `isSecureRequest(req)`：看 `x-forwarded-proto` 或请求 URL 的协议，
+    只有真的 HTTPS 才加 Secure。部署在 HTTPS 反代后面时记得让代理传 `x-forwarded-proto`。

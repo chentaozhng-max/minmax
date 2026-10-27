@@ -4,6 +4,7 @@ import { ok, handle, fail } from "@/lib/http";
 import {
   AUTH_COOKIES,
   attachAuthCookies,
+  isSecureRequest,
   clearAuthCookies,
   signAccess,
   signRefresh,
@@ -11,7 +12,7 @@ import {
 } from "@/lib/auth";
 
 /** 用 refresh token 换新的 access token */
-export const POST = handle(async () => {
+export const POST = handle(async (req: Request) => {
   const jar = await cookies();
   const refresh = jar.get(AUTH_COOKIES.REFRESH_COOKIE)?.value;
   if (!refresh) return fail(401, "登录已过期");
@@ -23,5 +24,10 @@ export const POST = handle(async () => {
     return clearAuthCookies(res);
   }
   const access = await signAccess({ sub: user.id, role: user.role as "SUBJECT", name: user.name });
-  return attachAuthCookies(ok({ refreshed: true }), access, await signRefresh(user.id));
+  return attachAuthCookies(
+    ok({ refreshed: true }),
+    access,
+    await signRefresh(user.id),
+    isSecureRequest(req),
+  );
 });

@@ -60,19 +60,35 @@ export async function verifyRefresh(token: string): Promise<string | null> {
   }
 }
 
-export function attachAuthCookies(res: NextResponse, access: string, refresh: string) {
-  const isProd = process.env.NODE_ENV === "production";
+/** 判断这次请求是不是 HTTPS：只有 HTTPS 才给 Cookie 加 Secure，
+ *  否则手机用 http://192.168.x.x:3000 打开时浏览器会丢弃 Cookie，登录跳不进去 */
+export function isSecureRequest(req: Request) {
+  const forwarded = req.headers.get("x-forwarded-proto");
+  if (forwarded) return forwarded.split(",")[0].trim() === "https";
+  try {
+    return new URL(req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function attachAuthCookies(
+  res: NextResponse,
+  access: string,
+  refresh: string,
+  secure = false,
+) {
   res.cookies.set(ACCESS_COOKIE, access, {
     httpOnly: true,
     sameSite: "lax",
-    secure: isProd,
+    secure,
     path: "/",
     maxAge: ACCESS_TTL_SEC,
   });
   res.cookies.set(REFRESH_COOKIE, refresh, {
     httpOnly: true,
     sameSite: "lax",
-    secure: isProd,
+    secure,
     path: "/",
     maxAge: REFRESH_TTL_SEC,
   });

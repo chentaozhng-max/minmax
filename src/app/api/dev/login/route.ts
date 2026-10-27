@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { attachAuthCookies, signAccess, signRefresh } from "@/lib/auth";
+import { attachAuthCookies, isSecureRequest, signAccess, signRefresh } from "@/lib/auth";
 import type { Role } from "@/lib/domain";
 
 /**
@@ -27,5 +27,6 @@ export async function GET(req: Request) {
     res,
     await signAccess({ sub: user.id, role: user.role as Role, name: user.name }),
     await signRefresh(user.id),
+    isSecureRequest(req),
   );
 }

@@ -3,6 +3,7 @@ import { ok, handle, ApiError } from "@/lib/http";
 import { loginSchema } from "@/lib/domain";
 import {
   attachAuthCookies,
+  isSecureRequest,
   signAccess,
   signRefresh,
   type SessionPayload,
@@ -48,5 +49,5 @@ export const POST = handle(async (req: Request) => {
     studentVerified: user.studentVerified,
     creditScore: user.creditScore,
   });
-  return attachAuthCookies(res, access, refresh);
+  return attachAuthCookies(res, access, refresh, isSecureRequest(req));
 });
