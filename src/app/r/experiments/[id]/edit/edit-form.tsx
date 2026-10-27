@@ -12,7 +12,7 @@ import { SlotBatchGenerator, type SlotDraft } from "@/components/slot-batch-gene
 import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
 import { experimentStatusLabel, type ExperimentStatus } from "@/lib/domain";
-import { formatDayCN, formatHM, toShanghai } from "@/lib/time";
+import { formatDateTimeInput, formatDayCN, formatHM } from "@/lib/time";
 
 type Detail = {
   id: string;
@@ -36,13 +36,6 @@ type Detail = {
   }[];
   applicants: unknown[];
 };
-
-/** ISO → datetime-local 能吃的上海本地串 */
-function toLocalInput(iso: string) {
-  const p = toShanghai(new Date(iso));
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
-}
 
 function fromLocalInput(value: string) {
   return new Date(`${value}:00+08:00`).toISOString();
@@ -77,7 +70,7 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
     setRequirements(data.requirements ?? "");
     setMinCreditScore(String(data.minCreditScore));
     setNeedsVerification(data.needsVerification);
-    setDeadline(toLocalInput(data.signupDeadline));
+    setDeadline(formatDateTimeInput(new Date(data.signupDeadline)));
   }, [data]);
 
   const save = useMutation({

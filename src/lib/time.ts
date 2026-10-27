@@ -107,8 +107,16 @@ export function todayInShanghai() {
   return new Date(Date.now() + TZ_OFFSET_MS).toISOString().slice(0, 10);
 }
 
-/** 在 YYYY-MM-DD 上加天数 */
+/** 在 YYYY-MM-DD 上加天数（按上海时区的日历日算，不能直接取 toISOString 的 UTC 日期） */
 export function addDaysToDateStr(dateStr: string, days: number) {
   const base = new Date(`${dateStr}T00:00:00+08:00`);
-  return new Date(base.getTime() + days * DAY).toISOString().slice(0, 10);
+  const shifted = new Date(base.getTime() + days * DAY + TZ_OFFSET_MS);
+  return shifted.toISOString().slice(0, 10);
+}
+
+/** Date → <input type="datetime-local"> 能吃的上海本地串（YYYY-MM-DDTHH:mm） */
+export function formatDateTimeInput(date: Date) {
+  const p = shanghaiParts(date);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
 }

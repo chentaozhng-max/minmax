@@ -15,6 +15,14 @@ npm run setup     # 生成 Prisma Client + 建库 + 灌种子数据
 npm run dev       # http://localhost:3000
 ```
 
+### 最省事：双击打开（Windows）
+
+双击项目根目录的 **`启动 PsyMatch.cmd`**。它会自动补齐缺的东西（依赖 → 数据库 → 构建产物），
+然后开一个标题为 `PsyMatch Server` 的窗口跑生产构建，并打开默认浏览器到
+**http://localhost:3000**。关掉那个服务器窗口就停了。
+
+已经有 `node_modules` / `prisma/dev.db` / `.next` 的话，这三步会直接跳过，几秒就能打开。
+
 > 国内网络建议加镜像：`npm install --registry=https://registry.npmmirror.com`
 > `dev / build / start` 都经过 `scripts/next-run.mjs` 包装（预加载一个 readlink 补丁，
 > 见 `DECISIONS.md` 第 18 条），直接用 `npx next dev` 在本机会失败，用 npm script 就没问题。

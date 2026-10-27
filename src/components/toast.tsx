@@ -37,7 +37,11 @@ export function Toaster() {
   if (items.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex flex-col items-center gap-2 px-6">
+    <div
+      className="pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-6"
+      // 要让开底部 Tab 栏（56）和固定操作条（64），否则提示会压住按钮
+      style={{ bottom: "calc(128px + env(safe-area-inset-bottom))" }}
+    >
       {items.map((item) => (
         <div
           key={item.id}

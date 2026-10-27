@@ -10,7 +10,14 @@ import { Field, Input, Textarea } from "@/components/ui/input";
 import { SlotBatchGenerator, type SlotDraft } from "@/components/slot-batch-generator";
 import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
-import { addDaysToDateStr, formatDayCN, formatHM, todayInShanghai } from "@/lib/time";
+import {
+  addDaysToDateStr,
+  formatDateTimeCN,
+  formatDateTimeInput,
+  formatDayCN,
+  formatHM,
+  todayInShanghai,
+} from "@/lib/time";
 import { cn } from "@/lib/cn";
 
 export function NewExperimentForm() {
@@ -28,7 +35,8 @@ export function NewExperimentForm() {
   const [requirements, setRequirements] = useState("");
   const [minCreditScore, setMinCreditScore] = useState("0");
   const [needsVerification, setNeedsVerification] = useState(true);
-  const [deadline, setDeadline] = useState(`${addDaysToDateStr(todayInShanghai(), 3)}T23:59`);
+  // 默认报名截止设在明天中午：比默认的第一批时段（明天 14:00 起）更早，默认路径不会卡在校验上
+  const [deadline, setDeadline] = useState(`${addDaysToDateStr(todayInShanghai(), 1)}T12:00`);
 
   const [slots, setSlots] = useState<SlotDraft[]>([]);
 
@@ -50,6 +58,19 @@ export function NewExperimentForm() {
       for (const slot of generated) if (!keys.has(slot.startAt)) merged.push(slot);
       return merged.sort((a, b) => a.startAt.localeCompare(b.startAt));
     });
+
+    // 报名截止必须早于最早时段。生成时段后如果冲突，直接把截止时间调到最早时段前 2 小时，
+    // 否则用户会在第 2 步被卡住却不知道要改哪个字段。
+    const earliest = Math.min(...generated.map((s) => new Date(s.startAt).getTime()));
+    if (new Date(`${deadline}:00+08:00`).getTime() >= earliest) {
+      const adjusted = new Date(earliest - 2 * 3600 * 1000);
+      setDeadline(formatDateTimeInput(adjusted));
+      toast(
+        `已生成 ${generated.length} 个时段；报名截止自动改为 ${formatDateTimeCN(adjusted)}`,
+      );
+      return;
+    }
+
     toast(`已生成 ${generated.length} 个时段`);
   }
 
@@ -290,7 +311,7 @@ export function NewExperimentForm() {
                 <p>
                   报名截止：
                   <span className="num text-ink">
-                    {deadline.replace("T", " ")}
+                    {formatDateTimeCN(new Date(`${deadline}:00+08:00`))}
                   </span>
                 </p>
                 <p>
