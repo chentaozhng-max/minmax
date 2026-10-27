@@ -91,6 +91,10 @@ async function main() {
       `--user-data-dir=${path.resolve(".edge-profile")}`,
       "--no-first-run",
       "--no-default-browser-check",
+      // 关掉 Edge 自带的「翻译此页」气泡：它会以粉色「文A」圆标叠在页面右边缘，
+      // 被截图抓进去，看着像我们自己的 UI 缺陷。
+      "--lang=zh-CN",
+      "--disable-features=Translate,TranslateUI",
       "about:blank",
     ],
     { stdio: "ignore", detached: false },

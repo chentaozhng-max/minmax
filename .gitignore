@@ -12,6 +12,6 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 coverage/
 shots/
-.edge-profile/
+.edge-profile*/
 .edge-sub/
 .edge-sub/
