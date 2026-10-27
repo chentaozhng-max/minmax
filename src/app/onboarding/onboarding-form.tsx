@@ -6,7 +6,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
-import { postJson } from "@/lib/api-client";
+import { ApiClientError, postJson } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 
 const GRADES = ["大一", "大二", "大三", "大四", "研一", "研二", "研三", "博士"];
@@ -58,19 +58,19 @@ export function OnboardingForm({
   async function finish(skip = false) {
     setSaving(true);
     try {
-      await postJson("/api/me/profile", {
-        skip,
-        isStudent,
-        school,
-        department,
-        grade,
-        interests,
-        timePreference: times,
-      });
+      // 保存资料是幂等的（覆盖写），丢包后重试一次没有副作用；
+      // 手机上切网络、云端冷启动都可能让第一个请求直接失败。
+      await postJson(
+        "/api/me/profile",
+        { skip, isStudent, school, department, grade, interests, timePreference: times },
+        { retryNetworkError: 1 },
+      );
       toast(skip ? "先跳过，随时可以在「我的」里补" : "资料已保存");
       router.replace(role === "RESEARCHER" ? "/r/experiments" : "/");
     } catch (error) {
-      toast(error instanceof Error ? error.message : "保存失败", "error");
+      const network = error instanceof ApiClientError && error.network;
+      const message = error instanceof Error ? error.message : "保存失败";
+      toast(network ? `${message}，再点一次「完成」就好` : message, "error");
       setSaving(false);
     }
   }

@@ -43,6 +43,7 @@ type Detail = {
     canConfirm: boolean;
     canVerify: boolean;
     canMarkNoShow: boolean;
+    canRelease: boolean;
     canAppealResolve: boolean;
     subject: {
       id: string;
@@ -289,6 +290,16 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
                         onClick={() => act.mutate({ id: a.id, action: "no-show" })}
                       >
                         标记未到
+                      </Button>
+                    ) : null}
+                    {a.canRelease ? (
+                      <Button
+                        size="md"
+                        variant="ghost"
+                        loading={act.isPending}
+                        onClick={() => act.mutate({ id: a.id, action: "release" })}
+                      >
+                        释放名额
                       </Button>
                     ) : null}
                   </div>

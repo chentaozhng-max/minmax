@@ -9,6 +9,8 @@ import { clearExpiredBans, penalizeTx } from "@/server/credit";
 const TEN_MIN = 10 * 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
 const FORTY_EIGHT_H = 48 * 60 * 60 * 1000;
+/** 锁定（待被试确认）保留多久，超时自动释放 */
+const LOCK_TIMEOUT_MIN = 30;
 
 type JobResult = { job: string; affected: number };
 
@@ -92,11 +94,37 @@ export async function jobAutoUpholdAppeals(now = new Date()): Promise<JobResult>
   return { job: "auto-uphold-appeals", affected };
 }
 
+/**
+ * 4. 锁定超时释放：PENDING_SUBJECT_CONFIRM 超过 30 分钟没确认 → 自动取消并还名额。
+ *    之前没有任何 job 处理这个状态，被试手滑锁完退出，那一格就永久显示已约满。
+ */
+export async function jobExpireStaleLocks(now = new Date()): Promise<JobResult> {
+  const cutoff = new Date(now.getTime() - LOCK_TIMEOUT_MIN * 60 * 1000);
+  const stale = await prisma.appointment.findMany({
+    where: { status: "PENDING_SUBJECT_CONFIRM", createdAt: { lt: cutoff } },
+  });
+
+  let affected = 0;
+  for (const appointment of stale) {
+    await prisma.$transaction(async (tx) => {
+      await tx.appointment.update({
+        where: { id: appointment.id },
+        data: { status: "CANCELLED_BY_SUBJECT" },
+      });
+      await tx.$executeRaw`
+        UPDATE "Slot" SET "bookedCount" = MAX("bookedCount" - 1, 0) WHERE "id" = ${appointment.slotId}
+      `;
+    });
+    affected += 1;
+  }
+  return { job: "expire-stale-locks", affected };
+}
 export async function runAllJobs(now = new Date()) {
   const results: JobResult[] = [];
   results.push(await jobClearBans(now));
   results.push(await jobSweepConfirmed(now));
   results.push(await jobAutoUpholdAppeals(now));
+  results.push(await jobExpireStaleLocks(now));
   return results;
 }
 
@@ -120,5 +148,5 @@ export function startScheduler() {
   setInterval(guard("10min"), TEN_MIN);
   // 每小时补一次（覆盖上诉 48h / 主试提醒）
   setInterval(guard("1h"), ONE_HOUR);
-  console.log("[scheduler] 已启动：禁期清理 / 主试提醒 / 申诉自动成立");
+  console.log("[scheduler] 已启动：禁期清理 / 主试提醒 / 申诉自动成立 / 锁定超时释放");
 }

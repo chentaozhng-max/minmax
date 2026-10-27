@@ -6,6 +6,7 @@ import {
   confirmAsResearcher,
   confirmAsSubject,
   markNoShow,
+  releaseByResearcher,
   submitAppeal,
   verifyAttendance,
 } from "@/server/appointments";
@@ -15,6 +16,7 @@ type Params = { params: Promise<{ id: string; action: string }> };
 const ACTIONS = [
   "confirm",
   "confirm-subject",
+  "release",
   "checkin",
   "verify",
   "no-show",
@@ -46,6 +48,11 @@ export const POST = handle(async (req: Request, { params }: Params) => {
       const user = await requireUser();
       const updated = await confirmAsSubject(id, user.id);
       return ok({ id: updated.id, status: updated.status }, "已确认，等待主试确认");
+    }
+    case "release": {
+      const researcher = await requireRole("RESEARCHER");
+      const updated = await releaseByResearcher(id, researcher.id);
+      return ok({ id: updated.id, status: updated.status }, "已释放该预约，名额已回到时段里");
     }
     case "checkin": {
       const user = await requireUser();

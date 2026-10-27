@@ -170,3 +170,41 @@
     会被代理转发，服务明明活着却返回 502（部分路径还因为代理缓存返回 200，更容易误判）。
     本机自检一律用 `curl --noproxy '*' http://127.0.0.1:3000/...`。
 
+
+## 发布链路（2026-10-27 改）
+
+31. **`build-if-needed.mjs` 按源码新旧判断，不再只看产物在不在**
+    原来只要 `.next` 里五个必需文件齐全就 `exit(0)`。云端沙箱是复用的，
+    第二次发布时里面还躺着上一版的 `.next`，于是 `npm start` 一路跳过构建，
+    线上页面永远是老内容——本地改完、链接打开却没变化。
+    现在拿 `src`、`public`、`prisma/schema.prisma`、`package.json`、
+    next / tailwind / postcss 配置、`tsconfig.json` 的最新 mtime 和
+    `.next/BUILD_ID` 比，源码更新就重建，并打印「源码比构建产物新 Ns」。
+    容 2 秒误差，避免解包时文件时间取整导致的假重建。
+    代价是每次发布多一次 build（几分钟），换来"发布即所见"。
+
+## 完善资料页「Failed to fetch」（2026-10-27 晚排查）
+
+32. **症状**：手机在 /onboarding 第 2 步点「完成」，底部弹红色 `Failed to fetch`。
+    服务端无异常——同一账号用 `curl --noproxy '*' POST /api/me/profile` 返回
+    `{"code":0,"message":"资料已保存"}`，登录链路也正常。所以是**浏览器网络层**
+    没收到任何响应（fetch 抛 TypeError），不是接口报错。
+
+33. **真正一直没修好的原因在启动脚本**：`启动 PsyMatch.cmd` 只判断
+    `.next\BUILD_ID` 存不存在，存在就跳过构建。于是源码改了、重启还是旧包，
+    手机一直跑 18:04 那份构建——里面的 api-client 还没有中文兜底，原样把
+    `Failed to fetch` 弹给用户。
+    现在脚本改成调用 `scripts/build-if-needed.mjs`（按源码 mtime 判定），
+    并在启动前检测 3000 是否仍被占用（旧窗口没关时直接提示，避免 EADDRINUSE
+    和 Prisma DLL 占用）。`npm start` 原本就走这套，两条入口现在一致。
+
+34. **代码侧兜底**（上一轮已写进源码，这次才真正生效）：
+    `api-client` 把网络失败翻译成「网络没连上，请检查网络后重试」，并把
+    `ApiClientError.network` 暴露出来；onboarding 提交带 `retryNetworkError: 1`
+    （保存资料是覆盖写，重试幂等），失败文案提示「再点一次完成就好」。
+
+35. **排查命令备忘**：本机自检一律 `curl --noproxy '*'`；判断线上/本地是否
+    跑的是新代码，直接 grep 构建产物里有没有新文案，比看 BUILD_ID 时间可靠：
+    `Select-String -Path .next\static\chunks\*.js -Pattern '网络没连上'`。
+    另外沙箱里 `taskkill` / `Stop-Process` 动不了用户手动起的服务窗口，
+    重建必须先由用户关掉那个窗口。

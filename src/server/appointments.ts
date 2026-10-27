@@ -161,7 +161,14 @@ export async function checkIn(id: string, userId: string, now = new Date()) {
   const appointment = await loadAppointment(id);
   if (appointment.subjectId !== userId) throw new ApiError(403, "只能操作自己的预约");
   if (appointment.status === AppointmentStatus.CHECKED_IN) throw new ApiError(400, "你已经签到过了");
-  if (appointment.status !== AppointmentStatus.CONFIRMED) throw new ApiError(400, "当前状态无法签到");
+  // AWAITING_RESEARCHER（被试已确认、主试还没点）也允许签到：
+  // 主试忘了确认不该由到了现场的被试买单——否则他既签不了到，又会被判未到场。
+  if (
+    appointment.status !== AppointmentStatus.CONFIRMED &&
+    appointment.status !== AppointmentStatus.AWAITING_RESEARCHER
+  ) {
+    throw new ApiError(400, "当前状态无法签到");
+  }
 
   const target = appointment.slot;
   if (now.getTime() < target.startAt.getTime() - 30 * 60 * 1000) {
@@ -211,11 +218,19 @@ export async function markNoShow(id: string, researcherId: string, now = new Dat
   ) {
     throw new ApiError(400, "该预约当前不能标记未到");
   }
+  // 时段开始前不能判定「没来」——之前可以提前几天把人标成未到场，直接 -2 并禁期。
+  if (now.getTime() < appointment.slot.startAt.getTime()) {
+    throw new ApiError(400, "时段还没开始，不能标记未到");
+  }
   return prisma.$transaction(async (tx) => {
     const updated = await tx.appointment.update({
       where: { id },
       data: { status: AppointmentStatus.NO_SHOW, noShowAt: now },
     });
+    // 名额要放出来：之前标记未到不碰 Slot，那一格永远显示已约满。
+    await tx.$executeRaw`
+      UPDATE "Slot" SET "bookedCount" = MAX("bookedCount" - 1, 0) WHERE "id" = ${appointment.slotId}
+    `;
     await penalizeTx(tx, {
       userId: appointment.subjectId,
       reason: "NO_SHOW",
@@ -256,6 +271,30 @@ export async function cancelBySubject(id: string, userId: string, now = new Date
  * 逐条按 Appointment 对应的 Slot.startAt 判断：< 24h 才记主试未到场（-2 + 禁期），
  * ≥ 24h 只改状态、不扣分、不计次、不写 CreditEvent。
  */
+/**
+ * 主试释放一个还没确认的预约（名额被锁死时的出口），不扣分、不计次。
+ * 之前主试端对 PENDING_SUBJECT_CONFIRM 零操作，只能等。
+ */
+export async function releaseByResearcher(id: string, researcherId: string) {
+  const appointment = await loadAppointment(id);
+  if (appointment.experiment.researcherId !== researcherId) throw new ApiError(403, "没有权限");
+  if (
+    appointment.status !== AppointmentStatus.PENDING_SUBJECT_CONFIRM &&
+    appointment.status !== AppointmentStatus.AWAITING_RESEARCHER
+  ) {
+    throw new ApiError(400, "只有待确认的预约可以释放");
+  }
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.appointment.update({
+      where: { id },
+      data: { status: AppointmentStatus.CANCELLED_BY_RESEARCHER },
+    });
+    await tx.$executeRaw`
+      UPDATE "Slot" SET "bookedCount" = MAX("bookedCount" - 1, 0) WHERE "id" = ${appointment.slotId}
+    `;
+    return updated;
+  });
+}
 export async function cancelExperimentByResearcher(
   experimentId: string,
   researcherId: string,
@@ -273,27 +312,30 @@ export async function cancelExperimentByResearcher(
   );
 
   const settled = await prisma.$transaction(async (tx) => {
-    let penalized = 0;
-    let waived = 0;
+    // 一次取消动作只记一次，不按预约条数累计：
+    // 之前 4 条预约会让主试直接吃到 7 天禁期，而弹窗和接口文案都写「记你一次未到场」。
+    const lateList = affected.filter((appointment) =>
+      shouldPenalizeResearcherCancel(appointment.slot.startAt, now),
+    );
+    const lateCount = lateList.length;
+    const lateAppointment = lateList[0];
     for (const appointment of affected) {
-      const late = shouldPenalizeResearcherCancel(appointment.slot.startAt, now);
       await tx.appointment.update({
         where: { id: appointment.id },
         data: { status: AppointmentStatus.CANCELLED_BY_RESEARCHER },
       });
-      if (late) {
-        await penalizeTx(tx, {
-          userId: researcherId,
-          reason: "RESEARCHER_CANCEL",
-          appointmentId: appointment.id,
-          note: `${experiment.title} 取消，距时段开始不足 24 小时`,
-          now,
-        });
-        penalized += 1;
-      } else {
-        waived += 1;
-      }
     }
+    if (lateAppointment) {
+      await penalizeTx(tx, {
+        userId: researcherId,
+        reason: "RESEARCHER_CANCEL",
+        appointmentId: lateAppointment.id,
+        note: `${experiment.title} 取消，距时段开始不足 24 小时`,
+        now,
+      });
+    }
+    const penalized = lateCount > 0 ? 1 : 0;
+    const waived = affected.length - lateCount;
     await tx.experiment.update({
       where: { id: experimentId },
       data: { status: ExperimentStatus.CLOSED },
@@ -302,7 +344,7 @@ export async function cancelExperimentByResearcher(
     return { penalized, waived };
   });
 
-  return { ...settled, total: affected.length };
+  return { ...settled, total: affected.length, lateCount: settled.penalized > 0 ? affected.length - settled.waived : 0 };
 }
 
 /** 被试提交申诉（主试未到场），CHECKED_IN 后 24h 内 */

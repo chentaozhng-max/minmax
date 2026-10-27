@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { TabBar } from "@/components/tab-bar";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { SlotBatchGenerator, type SlotDraft } from "@/components/slot-batch-generator";
@@ -119,7 +118,7 @@ export function NewExperimentForm() {
   }
 
   return (
-    <main className="shell with-actionbar">
+    <main className="shell actionbar-space">
       <PageHeader title="发布实验" back="auto" profile={{ role: "RESEARCHER" }} />
 
       <div className="flex items-center gap-1 px-4 pt-3">
@@ -349,7 +348,7 @@ export function NewExperimentForm() {
         ) : null}
       </div>
 
-      <div className="fixed bottom-14 left-0 right-0 z-30 border-t border-line bg-surface/95 backdrop-blur">
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
         <div className="mx-auto flex w-full max-w-[480px] gap-2 px-4 py-2.5">
           {step > 1 ? (
             <Button variant="outline" size="lg" onClick={() => setStep((s) => s - 1)} className="flex-1">
@@ -379,7 +378,6 @@ export function NewExperimentForm() {
         </div>
       </div>
 
-      <TabBar role="RESEARCHER" />
     </main>
   );
 }

@@ -54,6 +54,7 @@ export const GET = handle(async (_req: Request, { params }: Params) => {
       canConfirm: a.status === "AWAITING_RESEARCHER",
       canVerify: a.status === "CHECKED_IN",
       canMarkNoShow: a.status === "CONFIRMED" || a.status === "AWAITING_RESEARCHER",
+      canRelease: a.status === "PENDING_SUBJECT_CONFIRM" || a.status === "AWAITING_RESEARCHER",
       canAppealResolve: a.appealStatus === "PENDING",
       subject: {
         id: a.subject.id,

@@ -73,7 +73,9 @@ export default async function ResearcherProfilePage() {
               </p>
               <p className="num mt-0.5 text-[11px] text-ink-soft">{user.phone}</p>
             </div>
-            <CreditRing score={user.creditScore} size={72} label="主试信誉" />
+            <Link href="/me/credit" aria-label="查看信誉分明细" className="press rounded-full">
+              <CreditRing score={user.creditScore} size={72} label="主试信誉" />
+            </Link>
           </div>
 
           <div className="mt-3 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
@@ -151,14 +153,20 @@ export default async function ResearcherProfilePage() {
         <section className="mt-5">
           <div className="mb-2 flex items-baseline justify-between">
             <h3 className="section-title">信誉分变动</h3>
-            <span className="text-[11px] text-ink-soft">取消、未到场、申诉都会记在这里</span>
+            <Link href="/me/credit" className="flex items-center text-[11px] text-moss">
+              查看详情 <ChevronRight size={13} />
+            </Link>
           </div>
           <div className="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
             {events.length === 0 ? (
               <p className="px-3.5 py-6 text-center text-[12px] text-ink-soft">还没有记录</p>
             ) : (
               events.map((event) => (
-                <div key={event.id} className="flex items-center gap-3 px-3.5 py-2.5">
+                <Link
+                  key={event.id}
+                  href={`/me/credit/${event.id}`}
+                  className="flex items-center gap-3 px-3.5 py-2.5 active:bg-mist"
+                >
                   <span
                     className={`num w-8 shrink-0 text-[14px] font-semibold ${
                       event.delta > 0 ? "text-moss" : "text-danger"
@@ -174,7 +182,8 @@ export default async function ResearcherProfilePage() {
                       {event.note ?? "—"} · {formatDateTimeCN(event.createdAt)}
                     </p>
                   </div>
-                </div>
+                  <ChevronRight size={15} className="shrink-0 text-ink-soft/60" />
+                </Link>
               ))
             )}
           </div>

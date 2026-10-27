@@ -80,7 +80,7 @@ export function LoginForm() {
         </h1>
       </div>
       <p className="mt-3 max-w-[20em] text-[14px] leading-6 text-ink-soft">
-        心理学实验的报名与排期。主试发布实验和可约时段，被试挑一个时段报名，到点签到。
+        心理学实验的报名与排期
       </p>
 
       {/* 角色插画：一眼看出"你现在是哪种身份" */}
