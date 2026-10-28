@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { BackButton } from "@/components/back-button";
 import { ProfileLink } from "@/components/profile-link";
@@ -14,7 +12,12 @@ export function PageHeader({
   tone = "paper",
 }: {
   title: string;
-  /** 传路径走 Link，传 "auto" 走浏览器历史 */
+  /**
+   * 返回箭头。统一「历史优先」：先 router.back()，没有历史才跳到这个路径。
+   * 传 "auto" 表示退不回去就回首页。
+   * 注意：不要在这里用 Link 硬跳——那会多压一条历史，
+   * 上一页的返回箭头再 back() 回来，两个页面就会来回弹。
+   */
   back?: string;
   right?: React.ReactNode;
   sticky?: boolean;
@@ -32,16 +35,8 @@ export function PageHeader({
         sticky && "sticky top-0",
       )}
     >
-      {back === "auto" ? (
-        <BackButton />
-      ) : back ? (
-        <Link
-          href={back}
-          aria-label="返回"
-          className="press flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink"
-        >
-          <ChevronLeft size={22} strokeWidth={1.9} />
-        </Link>
+      {back ? (
+        <BackButton fallback={back === "auto" ? "/" : back} />
       ) : (
         <span className="w-2" />
       )}

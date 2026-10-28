@@ -30,7 +30,9 @@ export default async function MessagesPage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="消息" back="auto" profile={{ role: "SUBJECT" }} />
+      {/* 消息是底部 tab 的根页面，不挂返回箭头：
+          否则「消息 → 对话 → 返回」再点箭头会退回对话，两边来回弹。 */}
+      <PageHeader title="消息" profile={{ role: "SUBJECT" }} />
       <div className="px-4 pt-3">
         <h2 className="section-title mb-2">和主试的对话</h2>
         {threads.length === 0 ? (

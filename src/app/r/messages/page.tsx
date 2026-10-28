@@ -13,7 +13,8 @@ export default async function ResearcherMessagesPage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="消息" back="auto" profile={{ role: "RESEARCHER" }} />
+      {/* tab 根页面不放返回箭头，避免和对话页的返回互相顶牛 */}
+      <PageHeader title="消息" profile={{ role: "RESEARCHER" }} />
 
       <div className="px-4 pt-3">
         {threads.length === 0 ? (

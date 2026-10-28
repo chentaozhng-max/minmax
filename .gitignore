@@ -15,3 +15,6 @@ shots/
 .edge-profile*/
 .edge-sub/
 .edge-sub/
+
+.edge-debug/
+*.patch
