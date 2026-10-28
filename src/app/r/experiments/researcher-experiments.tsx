@@ -11,6 +11,7 @@ import { StatusPill } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { experimentStatusLabel, type ExperimentStatus } from "@/lib/domain";
 import { formatDateTimeCN } from "@/lib/time";
+import { rewardLabel } from "@/lib/reward";
 import { cn } from "@/lib/cn";
 
 type Row = {
@@ -109,7 +110,7 @@ export function ResearcherExperiments() {
                 </div>
                 <p className="mt-1 text-[12px] text-ink-soft">
                   {row.location} · <span className="num">{row.durationMin} 分钟</span> ·{" "}
-                  {row.rewardText}
+                  {rewardLabel(row.rewardText)}
                 </p>
 
                 <div className="mt-2.5 flex items-center gap-2">

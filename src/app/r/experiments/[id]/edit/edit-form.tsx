@@ -13,6 +13,7 @@ import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
 import { experimentStatusLabel, type ExperimentStatus } from "@/lib/domain";
 import { formatDateTimeInput, formatDayCN, formatHM } from "@/lib/time";
+import { rewardYuan, toRewardText } from "@/lib/reward";
 
 type Detail = {
   id: string;
@@ -54,7 +55,7 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [durationMin, setDurationMin] = useState("40");
-  const [rewardText, setRewardText] = useState("¥30");
+  const [rewardYuanInput, setRewardYuanInput] = useState("30");
   const [requirements, setRequirements] = useState("");
   const [minCreditScore, setMinCreditScore] = useState("0");
   const [needsVerification, setNeedsVerification] = useState(true);
@@ -66,7 +67,7 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
     setDescription(data.description);
     setLocation(data.location);
     setDurationMin(String(data.durationMin));
-    setRewardText(data.rewardText);
+    setRewardYuanInput(String(rewardYuan(data.rewardText) ?? 30));
     setRequirements(data.requirements ?? "");
     setMinCreditScore(String(data.minCreditScore));
     setNeedsVerification(data.needsVerification);
@@ -127,12 +128,13 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
     if (title.trim().length < 4) return toast("标题至少 4 个字", "error");
     if (description.trim().length < 10) return toast("描述至少 10 个字", "error");
     if (!location.trim()) return toast("填一下实验地点", "error");
+    if (!toRewardText(rewardYuanInput)) return toast("填一下奖励金额（元）", "error");
     save.mutate({
       title: title.trim(),
       description: description.trim(),
       location: location.trim(),
       durationMin: Number(durationMin) || 40,
-      rewardText: rewardText.trim() || "¥0",
+      rewardText: toRewardText(rewardYuanInput),
       requirements: requirements.trim() || null,
       minCreditScore: Number(minCreditScore) || 0,
       needsVerification,
@@ -178,8 +180,19 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
                 onChange={(e) => setDurationMin(e.target.value.replace(/\D/g, ""))}
               />
             </Field>
-            <Field label="报酬">
-              <Input value={rewardText} onChange={(e) => setRewardText(e.target.value)} />
+            <Field label="奖励金额（元）">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[15px] text-ink-soft">
+                  ¥
+                </span>
+                <Input
+                  inputMode="numeric"
+                  className="num pl-7"
+                  value={rewardYuanInput}
+                  onChange={(e) => setRewardYuanInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="30"
+                />
+              </div>
             </Field>
           </div>
           <Field label="参加要求" hint="选填">

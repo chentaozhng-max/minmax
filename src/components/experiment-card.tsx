@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPin, Clock3 } from "lucide-react";
 import { VerifiedBadge } from "@/components/ui/badge";
+import { RewardTag } from "@/components/reward-tag";
 import { formatDateTimeCN, formatHM } from "@/lib/time";
 import type { CardView } from "@/server/experiments";
 
@@ -25,9 +26,7 @@ export function ExperimentCard({ card }: { card: CardView }) {
       <div className="pl-[19px] pr-4 py-3.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[15px] font-semibold leading-[22px] text-ink">{card.title}</h3>
-          <span className="num shrink-0 pt-0.5 text-[15px] font-semibold text-clay">
-            {card.rewardText}
-          </span>
+          <RewardTag text={card.rewardText} className="mt-0.5" />
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-ink-soft">

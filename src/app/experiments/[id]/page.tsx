@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/auth";
 import { checkEligibility } from "@/lib/credit";
 import { VerifiedBadge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/page-header";
+import { rewardAmountText, rewardLabel } from "@/lib/reward";
 import { SlotGrid } from "@/components/slot-grid";
 import { formatDateTimeCN, formatDayCN, formatDayKey, formatHM } from "@/lib/time";
 import { remainingOf } from "@/server/experiments";
@@ -15,7 +16,7 @@ import { ContactCard } from "./contact-card";
 
 /**
  * 实验详情页。信息结构参照招聘类 App 的职位详情：
- * 标题 + 报酬同行 → 元信息 → 发布者卡 → 信息表 → 正文 → 可选时段 → 底部固定 CTA。
+ * 标题 + 奖励金额同行 → 元信息 → 发布者卡 → 信息表 → 正文 → 可选时段 → 底部固定 CTA。
  * 白底 + 细分隔线 + 高信息密度，不再用一堆描边卡片。
  */
 export default async function ExperimentDetailPage({
@@ -91,15 +92,18 @@ export default async function ExperimentDetailPage({
     <main className="shell actionbar-space bg-surface">
       <PageHeader title="实验详情" back="auto" tone="surface" profile={{ role: "SUBJECT" }} />
 
-      {/* 标题 + 报酬 */}
+      {/* 标题 + 奖励金额 */}
       <section className="px-4 pb-3.5 pt-4">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-[21px] font-semibold leading-[29px] tracking-[-0.01em] text-ink">
             {experiment.title}
           </h2>
-          <span className="num shrink-0 text-[20px] font-semibold leading-[29px] text-clay">
-            {experiment.rewardText}
-          </span>
+          <div className="shrink-0 text-right">
+            <p className="text-[10px] leading-[13px] text-ink-soft">奖励金额</p>
+            <p className="num text-[20px] font-semibold leading-[26px] text-clay">
+              {rewardAmountText(experiment.rewardText)}
+            </p>
+          </div>
         </div>
 
         <p className="mt-1.5 text-[13px] leading-5 text-ink-soft">
@@ -212,9 +216,10 @@ export default async function ExperimentDetailPage({
       {/* 底部固定操作条 */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface">
         <div className="safe-bottom mx-auto flex h-16 w-full max-w-[480px] items-center gap-3 px-4">
-          <div className="w-[92px] shrink-0">
-            <p className="num truncate text-[18px] font-semibold leading-6 text-clay">
-              {experiment.rewardText}
+          <div className="w-[104px] shrink-0">
+            <p className="text-[10px] leading-[13px] text-ink-soft">奖励金额</p>
+            <p className="num truncate text-[17px] font-semibold leading-6 text-clay">
+              {rewardAmountText(experiment.rewardText)}
             </p>
             <p className="num truncate text-[11px] leading-4 text-ink-soft">
               {mine

@@ -11,11 +11,6 @@ const DURATIONS: Chip[] = [
   { key: "duration", label: "1 小时以上", value: "long" },
 ];
 
-const REWARDS: Chip[] = [
-  { key: "reward", label: "现金", value: "cash" },
-  { key: "reward", label: "学分", value: "credit" },
-];
-
 const DATES: Chip[] = [
   { key: "date", label: "今天有空位", value: "today" },
   { key: "date", label: "明天有空位", value: "tomorrow" },
@@ -61,7 +56,6 @@ export function FilterChips() {
       {renderChips(ELIGIBLE, "")}
       {renderChips(DATES, "")}
       {renderChips(DURATIONS, "")}
-      {renderChips(REWARDS, "")}
     </div>
   );
 }

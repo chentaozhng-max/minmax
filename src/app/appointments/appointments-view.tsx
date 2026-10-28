@@ -14,6 +14,7 @@ import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
 import { appointmentStatusLabel, type AppointmentStatus } from "@/lib/domain";
 import { formatDayCN, formatHM } from "@/lib/time";
+import { rewardLabel } from "@/lib/reward";
 import { cn } from "@/lib/cn";
 import type { AppointmentItem } from "@/lib/types";
 
@@ -238,7 +239,7 @@ function AppointmentCard({
       <div className="mt-2 flex items-center gap-1 text-[12px] text-ink-soft">
         <MapPin size={12} strokeWidth={1.8} />
         {item.experiment.location}
-        <span className="num ml-auto text-clay">{item.experiment.rewardText}</span>
+        <span className="num ml-auto text-clay">{rewardLabel(item.experiment.rewardText)}</span>
       </div>
 
       {item.appealStatus === "PENDING" ? (

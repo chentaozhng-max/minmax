@@ -222,7 +222,7 @@ ${formatForPrompt(now)}（Asia/Shanghai，UTC+8）
 主试：${experiment.researcher.name}
 地点：${experiment.location}
 时长：${experiment.durationMin} 分钟
-报酬：${experiment.rewardText}
+奖励金额：${experiment.rewardText}
 类型：${experiment.type === "GROUP" ? `团体（${experiment.groupSize ?? 2} 人一场）` : "一对一"}
 
 ## 候选时段（已按系统规则排序，是唯一合法的时间来源）

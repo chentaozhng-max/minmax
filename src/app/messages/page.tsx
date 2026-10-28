@@ -8,6 +8,7 @@ import { parseMessages } from "@/lib/domain";
 import { listThreads } from "@/server/dm";
 import { ThreadList } from "./thread-list";
 import { formatDateTimeCN } from "@/lib/time";
+import { rewardLabel } from "@/lib/reward";
 import { Button } from "@/components/ui/button";
 
 const STATE_LABEL: Record<string, string> = {
@@ -86,7 +87,7 @@ export default async function MessagesPage() {
                       {STATE_LABEL[s.state] ?? s.state}
                       <span className="text-line">|</span>
                       <span className="num text-ink-soft">
-                        {s.experiment.durationMin} 分钟 · {s.experiment.rewardText}
+                        {s.experiment.durationMin} 分钟 · {rewardLabel(s.experiment.rewardText)}
                       </span>
                     </span>
                   </span>

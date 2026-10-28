@@ -77,8 +77,6 @@ export async function listExperimentCards(params: {
   if (params.duration === "short") where.durationMin = { lte: 30 };
   if (params.duration === "medium") where.durationMin = { gt: 30, lte: 60 };
   if (params.duration === "long") where.durationMin = { gt: 60 };
-  if (params.reward === "cash") where.rewardText = { contains: "¥" };
-  if (params.reward === "credit") where.rewardText = { contains: "学分" };
 
   const experiments = await prisma.experiment.findMany({
     where,

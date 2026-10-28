@@ -18,6 +18,7 @@ import {
   todayInShanghai,
 } from "@/lib/time";
 import { cn } from "@/lib/cn";
+import { rewardLabel, toRewardText } from "@/lib/reward";
 
 export function NewExperimentForm() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export function NewExperimentForm() {
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [durationMin, setDurationMin] = useState("30");
-  const [rewardText, setRewardText] = useState("¥30");
+  const [rewardYuan, setRewardYuan] = useState("30");
   const [type, setType] = useState<"INDIVIDUAL" | "GROUP">("INDIVIDUAL");
   const [groupSize, setGroupSize] = useState("3");
   const [requirements, setRequirements] = useState("");
@@ -78,6 +79,7 @@ export function NewExperimentForm() {
       if (title.trim().length < 4) return toast("标题至少 4 个字", "error");
       if (description.trim().length < 10) return toast("描述至少 10 个字", "error");
       if (!location.trim()) return toast("填一下实验地点", "error");
+      if (!toRewardText(rewardYuan)) return toast("填一下奖励金额（元）", "error");
       if (Number(minCreditScore) < 0 || Number(minCreditScore) > 100)
         return toast("信誉门槛要在 0–100 之间", "error");
       if (type === "GROUP" && Number(groupSize) < 2) return toast("团体实验人数至少 2", "error");
@@ -99,7 +101,7 @@ export function NewExperimentForm() {
         description: description.trim(),
         location: location.trim(),
         durationMin: Number(durationMin),
-        rewardText: rewardText.trim(),
+        rewardText: toRewardText(rewardYuan),
         type,
         groupSize: type === "GROUP" ? Number(groupSize) : null,
         requirements: requirements.trim() || undefined,
@@ -178,8 +180,19 @@ export function NewExperimentForm() {
                   onChange={(e) => setDurationMin(e.target.value.replace(/\D/g, ""))}
                 />
               </Field>
-              <Field label="报酬">
-                <Input value={rewardText} onChange={(e) => setRewardText(e.target.value)} placeholder="¥30 / 1 学分" />
+              <Field label="奖励金额（元）">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[15px] text-ink-soft">
+                    ¥
+                  </span>
+                  <Input
+                    inputMode="numeric"
+                    className="num pl-7"
+                    value={rewardYuan}
+                    onChange={(e) => setRewardYuan(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="30"
+                  />
+                </div>
               </Field>
             </div>
 
@@ -303,7 +316,8 @@ export function NewExperimentForm() {
             <div className="rounded-card border border-line bg-surface p-4">
               <h3 className="text-[16px] font-semibold text-ink">{title}</h3>
               <p className="mt-1 text-[12px] text-ink-soft">
-                {location} · <span className="num">{durationMin} 分钟</span> · {rewardText} ·{" "}
+                {location} · <span className="num">{durationMin} 分钟</span> ·{" "}
+                {rewardLabel(toRewardText(rewardYuan))} ·{" "}
                 {type === "GROUP" ? `团体 ${groupSize} 人` : "一对一"}
               </p>
               <div className="mt-2 space-y-1 text-[12px] text-ink-soft">

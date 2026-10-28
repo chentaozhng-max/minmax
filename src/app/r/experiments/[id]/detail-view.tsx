@@ -12,6 +12,7 @@ import { api, postJson } from "@/lib/api-client";
 import { appointmentStatusLabel, experimentStatusLabel, type AppointmentStatus } from "@/lib/domain";
 import { formatDayCN, formatHM } from "@/lib/time";
 import { cn } from "@/lib/cn";
+import { rewardLabel } from "@/lib/reward";
 
 type Detail = {
   id: string;
@@ -161,7 +162,7 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
         <div className="rounded-card border border-line bg-surface p-3.5">
           <p className="text-[12px] leading-5 text-ink-soft">
             {data.location} · <span className="num">{data.durationMin} 分钟</span> ·{" "}
-            {data.rewardText} · 截止 {data.signupDeadline.slice(0, 10)}
+            {rewardLabel(data.rewardText)} · 截止 {data.signupDeadline.slice(0, 10)}
           </p>
           <div className="mt-2 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
             <Stat label="待处理" value={pending} tone={pending > 0 ? "clay" : "ink"} />

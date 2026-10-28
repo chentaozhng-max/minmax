@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header";
 import { CreditRing } from "@/components/credit-ring";
 import { VerifiedBadge } from "@/components/ui/badge";
 import { formatShortDayCN } from "@/lib/time";
+import { rewardLabel } from "@/lib/reward";
 
 export default async function ResearcherPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePage();
@@ -107,7 +108,7 @@ export default async function ResearcherPage({ params }: { params: Promise<{ id:
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-[14px] font-medium text-ink">{e.title}</span>
-                    <span className="num shrink-0 text-[13px] text-clay">{e.rewardText}</span>
+                    <span className="num shrink-0 text-[13px] text-clay">{rewardLabel(e.rewardText)}</span>
                   </div>
                   <p className="mt-0.5 truncate text-[11px] text-ink-soft">{e.location}</p>
                   <p className="num mt-0.5 text-[11px] text-ink-soft">

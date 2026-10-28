@@ -194,7 +194,7 @@ async function main() {
         "填写一组标准化问卷并完成 15 分钟的电脑任务，用于研究睡眠质量对情绪调节策略的影响，全程约 30 分钟。",
       location: "线上（腾讯会议）",
       durationMin: 30,
-      rewardText: "1 学分",
+      rewardText: "¥30",
       type: "INDIVIDUAL",
       minCreditScore: 0,
       needsVerification: false,
