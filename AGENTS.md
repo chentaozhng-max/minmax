@@ -42,8 +42,14 @@ npm run dev       # http://localhost:3000
 | 被试 | 许一然 | `13900000003` | 信誉 72 + 未认证，报不了门槛 80 的实验 |
 | 被试 | 沈栗 | `13900000004` | 3 次未到场，禁报名中 |
 
-**Windows 双击版**：`启动 PsyMatch.cmd` 会自动补依赖 / 建库 / 构建并开浏览器，
-`分享到外网.cmd` 用 cloudflared 开临时公网隧道。这两个只是给人用的糖，AI 用 npm script 就行。
+**Windows 双击版**：`启动 PsyMatch.cmd` 按 `[1/6]`–`[6/6]` 依次找 Node → 腾端口 →
+补依赖 → 建库 → 补 Prisma Client 与构建产物 → 前台跑 `next start`，浏览器由
+`scripts/open-when-ready.mjs` 轮询端口、就绪后才打开（不再是固定等 5 秒）。
+这个 `.cmd` 是 **GBK + CRLF** 编码，别用编辑器直接存 UTF-8：带 BOM 会让第一行报错，
+不带 BOM 又会在 `chcp 65001` 下触发 cmd 的按字节截断 bug（中文注释被腰斩当成命令执行）。
+文案统一改 `scripts/make-launcher.py` 里的字符串再跑一次，它会按正确编码生成。
+node 那几行单独 `chcp 65001`，否则 `[build]` / `[scheduler]` 的中文日志会显示成乱码。
+这两个只是给人用的糖，AI 用 npm script 就行。
 
 ---
 

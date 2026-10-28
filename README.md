@@ -23,11 +23,23 @@ npm run dev       # http://localhost:3000
 
 ### 最省事：双击打开（Windows）
 
-双击项目根目录的 **`启动 PsyMatch.cmd`**。它会自动补齐缺的东西（依赖 → 数据库 → 构建产物），
-然后开一个标题为 `PsyMatch Server` 的窗口跑生产构建，并打开默认浏览器到
-**http://localhost:3000**。关掉那个服务器窗口就停了。
+双击项目根目录的 **`启动 PsyMatch.cmd`**。窗口里依次打印 `[1/6]` 到 `[6/6]`：
+找 Node.js → 检查端口 → 补依赖 → 建库 → 补 Prisma Client 和构建产物 → 启动服务。
+服务就绪后自动打开浏览器到 **http://localhost:3000**。
 
-已经有 `node_modules` / `prisma/dev.db` / `.next` 的话，这三步会直接跳过，几秒就能打开。
+**这个窗口就是服务器**，关掉它服务就停了（以前会另开一个 `PsyMatch Server` 窗口、
+主窗口闪一下就消失，很容易以为没跑起来）。
+
+第一次运行要装依赖 / 建库 / 构建，几分钟；之后都在的情况下大约 5 秒。
+
+双击容易踩的几个坑，脚本里都已经处理：
+
+| 现象 | 原因 | 现在的处理 |
+|---|---|---|
+| 窗口停在 `Kill it and continue? [Y/N]` | 上次的服务还占着 3000 | 自动结束旧进程，不再要按键 |
+| 窗口里一直没动静好几分钟 | `.next` 不完整，正在整体重建 | 打印中文进度，说明要 1–3 分钟 |
+| 浏览器打开显示「无法访问此网站」 | 固定等 5 秒，`next start` 还没起来 | 轮询端口，就绪后才开（最多 150 秒） |
+| 每个页面都 500 | 构建被打断，`node_modules\.prisma\client` 被清掉 | 启动前单独检查，缺了就补 `prisma generate` |
 
 > 国内网络建议加镜像：`npm install --registry=https://registry.npmmirror.com`
 > `dev / build / start` 都经过 `scripts/next-run.mjs` 包装（预加载一个 readlink 补丁，

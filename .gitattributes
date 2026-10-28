@@ -1,0 +1,5 @@
+# 批处理文件按字节原样存取。
+# `启动 PsyMatch.cmd` 是 GBK + CRLF（原因见 scripts/make-launcher.py 顶部），
+# 让 Git 按 text 做换行转换有把中文和行尾搞坏的风险。
+*.cmd -text
+*.bat -text
