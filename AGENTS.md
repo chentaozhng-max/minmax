@@ -412,7 +412,8 @@ BullMQ + Redis 的 repeatable job，任务体可直接复用。
 版本号规则写在 [CHANGELOG.md](./CHANGELOG.md) 顶部：对外可见的更新加一个小版本
 （`v1.0` → `v1.1` → `v1.2`），结构性重做才升大版本。
 
-一次版本发布 = **三处同步**：`package.json` 的 version、`CHANGELOG.md` 新条目、`git tag`。
+一次版本发布 = **四处同步**：`package.json` 的 version、`CHANGELOG.md` 新条目、`git tag`、
+GitHub 上的 Release。
 
 ```bash
 # 1. 改版本号（同时更新 package-lock.json，不自动提交）
@@ -427,8 +428,15 @@ git tag -a v1.1 -m "PsyMatch v1.1"
 git push origin main --tags
 ```
 
-然后在 GitHub 上把 tag 变成 Release（可写说明、附构建产物）：
-`https://github.com/chentaozhng-max/minmax/releases/new?tag=v1.1`
+```bash
+# 4. 把 tag 变成 Release：正文自动取 CHANGELOG 里 `## v1.1` 那一节，已有则更新
+GH_TOKEN=ghp_xxx python scripts/release.py v1.1          # 先加 --dry-run 可只看正文
+```
+
+`scripts/release.py` 从 `git remote` 解析 owner/repo，调 GitHub API 建/改 Release，
+所以不用再开网页点。token 要 classic PAT 的 `repo` 权限；本机 `git credential` 里存的那个就够，
+可以这样取：`GH_TOKEN=$(printf "protocol=https\nhost=github.com\n\n" | git credential fill | sed -n 's/^password=//p')`。
+tag 必须**先 push 上去**，否则 API 会 422。
 
 **永远不要提交**：`.env`（密钥）、`prisma/dev.db`（数据库）、`.workbuddy/`（本机环境笔记）、
 `node_modules/`、`.next/`、`shots/`、`cloudflared.exe`。这些都在 `.gitignore` 里，
