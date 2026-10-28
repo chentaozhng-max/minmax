@@ -46,6 +46,17 @@ def changelog_section(tag: str) -> str | None:
     return re.sub(r"\n-{3,}\s*$", "", body).strip()
 
 
+def readme_version() -> str | None:
+    """README 顶部那行「当前版本：vX.Y」。
+
+    连漏了两次（v1.0→v1.1、v1.1→v1.2），所以发版前在这里卡一道：
+    对不上就不让发，免得 tag 里的 README 还写着上一个版本。
+    """
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    m = re.search(r"当前版本：\**\s*(v[\d.]+)", text)
+    return m.group(1) if m else None
+
+
 def api(method: str, path: str, token: str, payload: dict | None = None):
     req = urllib.request.Request(
         f"https://api.github.com{path}",
@@ -75,8 +86,17 @@ def main() -> None:
     parser.add_argument("tag", help="例如 v1.1")
     parser.add_argument("--name", help="Release 标题，默认 PsyMatch <tag>")
     parser.add_argument("--target", default="main", help="目标分支，默认 main")
+    parser.add_argument("--force", action="store_true", help="跳过 README 版本号一致性检查")
     parser.add_argument("--dry-run", action="store_true", help="只打印正文，不发请求")
     args = parser.parse_args()
+
+    declared = readme_version()
+    if declared != args.tag:
+        message = f"README.md 顶部写的是 {declared or '(没找到「当前版本：vX.Y」)'}，和要发的 {args.tag} 对不上"
+        if args.force:
+            print(f"[警告] {message}（--force，继续）")
+        else:
+            sys.exit(f"{message}\n先把 README 顶部改成 {args.tag}，或加 --force 跳过检查。")
 
     body = changelog_section(args.tag)
     if not body:
