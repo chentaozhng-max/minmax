@@ -171,6 +171,7 @@ src/components/          通用 UI：page-header / tab-bar / experiment-card / s
 tests/                   Vitest 单测（纯逻辑）
 scripts/                 包装器、启动兜底、验收、截图（见第 6 节）
 DECISIONS.md             每个非显然取舍的原因，按编号追加
+CHANGELOG.md             每个版本改了什么（发版时同步更新）
 ```
 
 ---
@@ -399,7 +400,40 @@ BullMQ + Redis 的 repeatable job，任务体可直接复用。
 
 ---
 
-## 9. 已知未做（别当成 bug 报）
+## 9. 版本与发布（GitHub）
+
+仓库：<https://github.com/chentaozhng-max/minmax>（**公开**，`main` 分支）。
+版本号规则写在 [CHANGELOG.md](./CHANGELOG.md) 顶部：对外可见的更新加一个小版本
+（`v1.0` → `v1.1` → `v1.2`），结构性重做才升大版本。
+
+一次版本发布 = **三处同步**：`package.json` 的 version、`CHANGELOG.md` 新条目、`git tag`。
+
+```bash
+# 1. 改版本号（同时更新 package-lock.json，不自动提交）
+npm version 1.1.0 --no-git-tag-version
+
+# 2. 在 CHANGELOG.md 顶部加一节 "## v1.1 — YYYY-MM-DD"
+
+# 3. 提交 + 打标签（附注标签，别用轻量标签）
+git add -A
+git commit -m "release: v1.1"
+git tag -a v1.1 -m "PsyMatch v1.1"
+git push origin main --tags
+```
+
+然后在 GitHub 上把 tag 变成 Release（可写说明、附构建产物）：
+`https://github.com/chentaozhng-max/minmax/releases/new?tag=v1.1`
+
+**永远不要提交**：`.env`（密钥）、`prisma/dev.db`（数据库）、`.workbuddy/`（本机环境笔记）、
+`node_modules/`、`.next/`、`shots/`、`cloudflared.exe`。这些都在 `.gitignore` 里，
+新增敏感文件时先确认 `git status` 没有它。
+
+**这个仓库是公开的**，提交前扫一眼有没有真实手机号、内网 IP、学号、token。
+演示账号（138/139 开头）是种子数据，可以公开。
+
+---
+
+## 10. 已知未做（别当成 bug 报）
 
 - 通知系统（短信 / 微信 / 站内红点），页面内状态与倒计时是有的
 - 管理员后台（`/admin` 自然 404）
@@ -410,7 +444,7 @@ BullMQ + Redis 的 repeatable job，任务体可直接复用。
 
 ---
 
-## 10. 出问题时先看这里
+## 11. 出问题时先看这里
 
 | 症状 | 大概率原因 | 处理 |
 |---|---|---|

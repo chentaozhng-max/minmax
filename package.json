@@ -1,6 +1,6 @@
 {
   "name": "psymatch",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "node scripts/next-run.mjs dev -p 3000",

@@ -16,7 +16,7 @@ async function main() {
       "--disable-gpu",
       "--hide-scrollbars",
       `--remote-debugging-port=${PORT}`,
-      "--user-data-dir=E:/minmax/.edge-profile",
+      "--user-data-dir=.edge-profile",
       "about:blank",
     ],
     { stdio: "ignore" },

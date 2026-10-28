@@ -24,7 +24,7 @@ async function main() {
       "--force-device-scale-factor=1",
       "--window-size=1200,1200",
       `--remote-debugging-port=${PORT}`,
-      "--user-data-dir=E:/minmax/.edge-profile",
+      "--user-data-dir=.edge-profile",
       "about:blank",
     ],
     { stdio: "ignore" },
