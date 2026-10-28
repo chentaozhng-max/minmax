@@ -6,6 +6,28 @@
 
 ---
 
+## v1.2 — 2026-10-28
+
+修「从 GitHub 下载压缩包解压后，双击启动程序提示启动失败」。
+
+### 修复
+
+- **根因**：`.env` 在 `.gitignore` 里，下载的包里没有它。Prisma 读不到 `DATABASE_URL`
+  直接报 `P1012 Environment variable not found: DATABASE_URL`，建库那一步失败，
+  整个启动跟着挂。
+- 新增 `scripts/ensure-env.mjs`：没有 `.env` 就按 `.env.example` 复制一份
+  （本地 SQLite 默认配置，开箱能跑）。已接进 `setup` / `dev` / `start` / `build` /
+  `db:push` / `db:seed` / `db:reset` 所有入口。
+- 启动脚本从 6 步改成 7 步，第 `[4/7]` 步专门补 `.env`，并提示 JWT 示例值只够本机试玩。
+- `.env.example` 顶部加了说明；README 补了「不用手动建 .env」和对应的故障行。
+
+### 验证
+
+拿一个干净的 clone（无 `.env` / `node_modules` / `.next` / `prisma/dev.db`）走完整启动：
+`npm install` 约 3 分钟 → 自动生成 `.env` → 建库灌种子 → 构建 → 起服务，登录页 HTTP 200。
+
+---
+
 ## v1.1 — 2026-10-28
 
 修「双击 `启动 PsyMatch.cmd` 跑不起来」。四个原因叠在一起，都改了。

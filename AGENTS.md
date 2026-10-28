@@ -27,6 +27,11 @@ npm run dev       # http://localhost:3000
 首次 `npm install` 走 `.npmrc` 里的 npmmirror 镜像；换机器网络不好时加
 `--registry=https://registry.npmmirror.com`。
 
+**不要手动创建 `.env`**。三个 `npm run` 前面都会跑 `scripts/ensure-env.mjs`：发现没有
+`.env` 就按 `.env.example` 复制一份。`.env` 在 `.gitignore` 里，新 clone / 从 GitHub 下载
+的目录都没有它，缺了会让 Prisma 报 `P1012 Environment variable not found: DATABASE_URL`
+（v1.2 之前就是「双击启动提示启动失败」的根因）。同理，启动脚本的 `[4/7]` 也做这件事。
+
 **开发环境不需要配任何 key**：`.env` 里 `LLM_API_KEY` 留空时，选时段页自动降级成
 「时段多选表单」，全部功能可用（只是没有自然语言推荐）。`SMTP_*` 留空时验证码打到
 控制台 + `mock-email.log`。
@@ -463,6 +468,7 @@ tag 必须**先 push 上去**，否则 API 会 422。
 | 症状 | 大概率原因 | 处理 |
 |---|---|---|
 | 全站 500，日志 `did not initialize yet` | 缺 `node_modules/.prisma/client/index.js` | 停服务 → `npx prisma generate` |
+| `P1012 Environment variable not found: DATABASE_URL` | 没有 `.env`（GitHub 下载的包 / 新 clone） | `node scripts/ensure-env.mjs` |
 | 页面样式全丢 / 布局错乱 | `.next` 是半成品 | 删 `.next` → 重新 build（可能要重试） |
 | 构建 `EPERM ... query_engine-windows.dll.node` | 服务没停 | 停 3000 端口进程再 build |
 | 构建 `ENOENT _buildManifest.js.tmp.*` | 文件系统 shim 或 E 盘抖动 | 重试 2–3 次 |

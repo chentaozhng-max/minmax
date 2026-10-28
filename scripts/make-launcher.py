@@ -48,7 +48,7 @@ if not defined NODE (
 )
 for %%i in ("%NODE%") do set "NODE_DIR=%%~dpi"
 set "NPM=%NODE_DIR%npm.cmd"
-echo [1/6] Node.js:  %NODE%
+echo [1/7] Node.js:  %NODE%
 
 rem ============================================================
 rem  2. 端口 3000
@@ -60,7 +60,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr /r /c:":3000 " ^| findstr "LI
   if not defined OLD_PID set "OLD_PID=%%a"
 )
 if defined OLD_PID (
-  echo [2/6] 端口 3000 被占用 ^(PID !OLD_PID!^)，应该是上次没关的 PsyMatch
+  echo [2/7] 端口 3000 被占用 ^(PID !OLD_PID!^)，应该是上次没关的 PsyMatch
   taskkill /F /PID !OLD_PID! >nul 2>&1
   if errorlevel 1 (
     echo       结束失败。请手动关掉占用 3000 端口的程序后重试。
@@ -71,32 +71,54 @@ if defined OLD_PID (
   echo       已结束旧进程，继续。
   timeout /t 2 /nobreak >nul
 ) else (
-  echo [2/6] 端口 3000 空闲
+  echo [2/7] 端口 3000 空闲
 )
 
 rem ============================================================
 rem  3. 依赖
 rem ============================================================
 if not exist "node_modules\" (
-  echo [3/6] 第一次运行，正在安装依赖。可能要好几分钟，请不要关窗口...
+  echo [3/7] 第一次运行，正在安装依赖。可能要好几分钟，请不要关窗口...
   call "%NPM%" install --registry=https://registry.npmmirror.com
   if errorlevel 1 goto fail
 ) else (
-  echo [3/6] 依赖已就绪
+  echo [3/7] 依赖已就绪
 )
 
 rem ============================================================
-rem  4. 数据库
+rem  4. 环境变量文件 .env
+rem     .env 在 .gitignore 里，从 GitHub 下载的压缩包里根本没有。
+rem     缺它的时候 prisma 直接报
+rem       P1012 Environment variable not found: DATABASE_URL
+rem     建库那一步就失败，整个启动跟着挂。
+rem     有 .env.example 就照抄一份，本地 SQLite 可以开箱跑。
+rem ============================================================
+if not exist ".env" (
+  if not exist ".env.example" (
+    echo [4/7] 既没有 .env 也没有 .env.example，无法建库。
+    goto fail
+  )
+  echo [4/7] 没有 .env，按 .env.example 生成一份（本地 SQLite 默认配置）
+  copy /y ".env.example" ".env" >nul
+  if errorlevel 1 goto fail
+  echo       注意：里面的 JWT_SECRET 是示例值，只够本机试玩；
+  echo       要放到公网上，先把 .env 里两个 JWT 密钥换成随机长串。
+) else (
+  echo [4/7] .env 已就绪
+)
+
+rem ============================================================
+rem  5. 数据库
 rem ============================================================
 if not exist "prisma\dev.db" (
-  echo [4/6] 正在建库并写入演示数据...
+  echo [5/7] 正在建库并写入演示数据...
   chcp 65001 >nul 2>&1
   call "%NPM%" run setup
   set "SETUP_RC=!errorlevel!"
   chcp 936 >nul 2>&1
   if not "!SETUP_RC!"=="0" goto fail
 ) else (
-  echo [4/6] 数据库已就绪
+  echo [5/7] 数据库已就绪
 )
 
 rem ============================================================
@@ -105,14 +127,14 @@ rem     构建被中断过的话 node_modules\.prisma\client 会被清掉，
 rem     少了它每个页面都返回 500，所以单独查一次。
 rem ============================================================
 if not exist "node_modules\.prisma\client\index.js" (
-  echo [5/6] 修补 Prisma Client...
+  echo [6/7] 修补 Prisma Client...
   chcp 65001 >nul 2>&1
   call "%NODE%" "node_modules\prisma\build\index.js" generate
   set "PRISMA_RC=!errorlevel!"
   chcp 936 >nul 2>&1
   if not "!PRISMA_RC!"=="0" goto fail
 )
-echo [5/6] 检查构建产物。源码有改动会自动重建，可能要 1 到 3 分钟，请不要关窗口...
+echo [6/7] 检查构建产物。源码有改动会自动重建，可能要 1 到 3 分钟，请不要关窗口...
 chcp 65001 >nul 2>&1
 "%NODE%" scripts\build-if-needed.mjs
 set "BUILD_RC=!errorlevel!"
@@ -124,7 +146,7 @@ rem  6. 启动
 rem     浏览器由 open-when-ready 在端口真正响应之后才打开，
 rem     以前固定等 5 秒就开，服务还没起来，看着像启动失败。
 rem ============================================================
-echo [6/6] 启动服务...
+echo [7/7] 启动服务...
 echo.
 echo ------------------------------------------------------------
 echo   电脑访问   http://localhost:3000

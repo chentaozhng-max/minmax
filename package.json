@@ -1,15 +1,15 @@
 {
   "name": "psymatch",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/next-run.mjs dev -p 3000",
-    "build": "prisma generate && node scripts/next-run.mjs build --turbopack",
-    "start": "node scripts/prepare-db.mjs && node scripts/build-if-needed.mjs && node scripts/next-run.mjs start",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
-    "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
+    "dev": "node scripts/ensure-env.mjs && node scripts/next-run.mjs dev -p 3000",
+    "build": "node scripts/ensure-env.mjs && prisma generate && node scripts/next-run.mjs build --turbopack",
+    "start": "node scripts/ensure-env.mjs && node scripts/prepare-db.mjs && node scripts/build-if-needed.mjs && node scripts/next-run.mjs start",
+    "db:push": "node scripts/ensure-env.mjs && prisma db push",
+    "db:seed": "node scripts/ensure-env.mjs && tsx prisma/seed.ts",
+    "db:reset": "node scripts/ensure-env.mjs && prisma db push --force-reset && tsx prisma/seed.ts",
+    "setup": "node scripts/ensure-env.mjs && prisma generate && prisma db push && tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "accept": "tsx scripts/acceptance.ts"
