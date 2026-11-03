@@ -51,7 +51,8 @@ git checkout -b feat/subject-profile
 
 命名：`feat/` 新功能、`fix/` 修 bug、`docs/` 文档、`refactor/` 重构。
 
-**不要直接往 `main` 推**——即使你有写权限。所有改动走 PR，理由不是流程好看，
+**`main` 已开分支保护，直接推会被 GitHub 拒掉**（`protected branch hook declined`）。
+所有改动走 PR，需要 1 个批准才能合并。理由不是流程好看，
 是「主试端已经能用，任何一次直接推都可能把演示环境搞挂」。
 
 ---
