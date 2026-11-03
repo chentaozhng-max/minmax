@@ -28,7 +28,7 @@
    `src/lib/{domain,credit,matching,reward}.ts` 现在是**转发壳**（`export * from`）。
    新代码请直接 `import from "@/domain/..."`；改规则改 `src/domain/` 里的真身。
 2. **用例在 `src/application/`，只有 6 个文件，故意很薄。**
-   很多业务还留在 `src/server/`（1698 行），那里的 `prisma.` 是**已知欠账**（68 处，棘轮只许变少）。
+   很多业务还留在 `src/server/`（2084 行），那里的 `prisma.` 是**已知欠账**（68 处，棘轮只许变少）。
    不要因为「看到 server 里有业务」就认为分层没做——它是「还没搬完」，不是「没搬」。
 3. **加新的跨层依赖，必须先写端口。**
    顺序是 `src/domain/ports/` 接口 → `src/adapters/` 实现 → `application/` 或 `server/` 接线。
@@ -38,12 +38,12 @@
 
 | 层 | 目录 | 规模（实测） | 一句话职责 |
 |---|---|---|---|
-| 领域层 | `src/domain/` | 1967 行 / 13 文件 + 11 个端口文件 | 规则、状态机、纯函数、端口定义，**零外部依赖** |
-| 应用层 | `src/application/` | 667 行 / 6 个用例 | 编排领域函数 + 调端口，不写业务判断 |
-| 适配层 | `src/adapters/` | 2224 行 / 22 文件 | Prisma、LLM、fetch——唯一碰外部世界的地方 |
-| 工具层 | `src/tools/` | 582 行 / 15 文件 | Agent 工具，两个注册表，不直连数据库 |
-| 组装层 | `src/server/` | 1698 行 / 11 文件 | 注入依赖实例；还没搬完的业务暂住 |
-| 页面层 | `src/app/` | 6184 行 / 26 页面 / 34 路由 | 鉴权 + 校验 + 转发，handler ≤ 40 行 |
+| 领域层 | `src/domain/` | 2905 行 / 23 文件（含 11 个端口文件） | 规则、状态机、纯函数、端口定义，**零外部依赖** |
+| 应用层 | `src/application/` | 774 行 / 6 个用例 | 编排领域函数 + 调端口，不写业务判断 |
+| 适配层 | `src/adapters/` | 2443 行 / 22 文件 | Prisma、LLM、fetch——唯一碰外部世界的地方 |
+| 工具层 | `src/tools/` | 753 行 / 15 文件 | Agent 工具，两个注册表，不直连数据库 |
+| 组装层 | `src/server/` | 2084 行 / 11 文件 | 注入依赖实例；还没搬完的业务暂住 |
+| 页面层 | `src/app/` | 7625 行 / 84 文件 / 26 页面 / 34 路由 | 鉴权 + 校验 + 转发，handler ≤ 40 行 |
 
 **端口 11 个文件 / 12 组接口**（都在 `src/domain/ports/`）：
 `LlmPort`、`SlotRepository`、`AppointmentRepository`、`ChatSessionRepository`、`TransactionPort`、
@@ -209,7 +209,7 @@ npm run lint:layers       # ✅ check-layers: 197 个文件通过（L1–L7）
 - 学科筛选（数据模型没有 `field` 字段）
 - 多实例调度（`scheduler.ts` 是进程内定时器）
 - L6 欠账 68 处（`server/appointments.ts` 14、`api/auth/login` 8、`server/scheduler.ts` 8 等）
-- 应用层偏薄（667 行 / 6 个用例，不少 `server/` 里的业务还没沉到 `domain/`）
+- 应用层偏薄（774 行 / 6 个用例，不少 `server/` 里的业务还没沉到 `domain/`）
 
 ---
 

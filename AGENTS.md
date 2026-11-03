@@ -253,7 +253,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 - **转发壳**：`domain.ts` `credit.ts` `matching.ts` `reward.ts` —— 真身都在 `@/domain/`。
   保留是为了 32 个调用方不用改 import。**新代码请直接 import `@/domain/...`。**
 
-### src/app/ — 页面与 API（25 个 page / 33 个 route handler）
+### src/app/ — 页面与 API（26 个 page / 34 个 route handler）
 
 ```
 page.tsx                  首页：搜索 + 筛选 + 实验卡片流
@@ -273,13 +273,13 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    50 个 Vitest 文件 / 543 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    54 个 Vitest 文件 / 591 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
 
-**各层规模（2026-11-03 实测）**：domain 1967 行 / application 667 / adapters 2224 /
-tools 582 / server 1698 / app 6184 / lib 537 / components 1234。
+**各层规模（2026-11-04 实测）**：domain 2905 行 / application 774 / adapters 2443 /
+tools 753 / server 2084 / app 7625 / lib 654 / components 2227。
 `application` 最薄——这是有意的，业务判断都沉在 `domain`，编排本来就短。
 
 ## 4. 分层判据（新建文件该放哪）
@@ -338,7 +338,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`543 tests passed`／`✅ check-layers: 184 个文件通过（L1–L7）`／
+**验收判据是输出**：`591 tests passed`／`✅ check-layers: 197 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」
@@ -495,7 +495,7 @@ tag 要先 push，否则 GitHub API 422。
 - **多实例调度**：`scheduler.ts` 是进程内定时器（第 8.2 节）
 - **L6 欠账 68 处**：`server/appointments.ts` 14 / `api/auth/login` 8 / `server/scheduler.ts` 8 等，
   只许变少（第 5.2 节）
-- **应用层偏薄**：667 行 / 6 个用例，很多 server 里的业务还没往 `domain` 沉
+- **应用层偏薄**：774 行 / 6 个用例，很多 server 里的业务还没往 `domain` 沉
 
 > 通知系统**已经做了**（站内红点 + 轮询 toast + 1min 扫描提醒），别按旧文档当成「明确不做」。
 
