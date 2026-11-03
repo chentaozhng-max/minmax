@@ -5,6 +5,9 @@
 - 产品介绍（给人看）：[README.md](./README.md)
 - 为什么这么分层、什么算越界：[ARCHITECTURE.md](./ARCHITECTURE.md)
 
+> **只改被试端？** 读 [AGENTS-SUBJECT.md](./AGENTS-SUBJECT.md)。那份更短、范围更窄，
+> 只讲被试端的文件地图、代码该放哪层、什么会让检查变红——不会让你误改主试端和共享规则。
+
 > **这个仓库在 2026-11-02/03 整体重构过一次**：从「按有没有副作用切」（`lib/` + `server/`）
 > 改成「领域层 / 应用层 / 适配层」（`domain/` + `application/` + `adapters/`）。
 > 产品行为零变化。如果你在旧对话或旧 commit 里看到 `src/server/xx.ts` 里写着业务逻辑，
