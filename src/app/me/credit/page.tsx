@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, ChevronRight, FlaskConical, ShieldCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { makeCreditPageQuery } from "@/adapters/db/prisma/page-query-credit";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { CreditRing } from "@/components/credit-ring";
@@ -14,23 +15,17 @@ import { formatDateTimeCN, formatSlotRange } from "@/lib/time";
 
 export default async function CreditDetailPage() {
   const session = await requirePage();
-  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  const query = makeCreditPageQuery(prisma);
+
+  const user = await query.findCreditPageUser(session.sub);
   if (!user) return null;
 
-  const events = await prisma.creditEvent.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const events = await query.findCreditEvents(user.id, 100);
   const appointmentIds = events
     .map((event) => event.appointmentId)
     .filter((id): id is string => Boolean(id));
-  const appointments = appointmentIds.length
-    ? await prisma.appointment.findMany({
-        where: { id: { in: appointmentIds } },
-        include: { experiment: true, slot: true },
-      })
-    : [];
+  // 空数组时适配器直接返回 []，不会发出 `in: []` 查询
+  const appointments = await query.findAppointmentsByIds(appointmentIds);
   const appointmentMap = new Map(appointments.map((appointment) => [appointment.id, appointment]));
   const banned = user.bannedUntil && user.bannedUntil.getTime() > Date.now();
 

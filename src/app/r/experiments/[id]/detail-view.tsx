@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader, Modal } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
+import { SlotSchedule, type ScheduleSlot } from "@/components/slot-schedule";
 import { Button } from "@/components/ui/button";
 import { StatusPill, VerifiedBadge } from "@/components/ui/badge";
 import { toast } from "@/components/toast";
@@ -62,15 +63,43 @@ type Detail = {
 
 type Tab = "applicants" | "slots";
 
-export function ResearcherExperimentDetail({ experimentId }: { experimentId: string }) {
+export function ResearcherExperimentDetail({
+  experimentId,
+  today,
+}: {
+  experimentId: string;
+  /** 上海时区今天，服务端给：课程表要标「今天」这一列 */
+  today: string;
+}) {
   const [tab, setTab] = useState<Tab>("applicants");
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [openSlotId, setOpenSlotId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["r-experiment", experimentId],
     queryFn: () => api<Detail>(`/api/r/experiments/${experimentId}`),
   });
+
+  /** 时段 → 课程表格子：人数用库里的 bookedCount，姓名从报名者里按起止时间对上来 */
+  const scheduleSlots = useMemo<ScheduleSlot[]>(() => {
+    if (!data) return [];
+    return data.slots.map((slot) => ({
+      id: slot.id,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      capacity: slot.capacity,
+      bookedCount: slot.bookedCount,
+      names: data.applicants
+        .filter(
+          (a) =>
+            a.slot.startAt === slot.startAt &&
+            a.slot.endAt === slot.endAt &&
+            !a.status.startsWith("CANCELLED"),
+        )
+        .map((a) => a.subject.name),
+    }));
+  }, [data]);
 
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string; action: string }) =>
@@ -141,6 +170,17 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
       a.appealStatus === "PENDING",
   ).length;
 
+  // 课程表里点开的那一段：谁约的、还能做什么，都在这个弹窗里
+  const openSlot = scheduleSlots.find((s) => s.id === openSlotId) ?? null;
+  const openBookings = openSlot
+    ? data.applicants.filter(
+        (a) =>
+          a.slot.startAt === openSlot.startAt &&
+          a.slot.endAt === openSlot.endAt &&
+          !a.status.startsWith("CANCELLED"),
+      )
+    : [];
+
   return (
     <main className="shell tabbar-space">
       <PageHeader
@@ -149,12 +189,20 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
         back="auto"
         profile={{ role: "RESEARCHER" }}
         right={
-          <Link
-            href={`/r/experiments/${experimentId}/edit`}
-            className="rounded-full px-2 py-1 text-[12px] text-moss"
-          >
-            编辑
-          </Link>
+          <>
+            <a
+              href={`/api/r/experiments/${experimentId}/export`}
+              className="rounded-full px-2 py-1 text-[12px] text-moss"
+            >
+              导出
+            </a>
+            <Link
+              href={`/r/experiments/${experimentId}/edit`}
+              className="rounded-full px-2 py-1 text-[12px] text-moss"
+            >
+              编辑
+            </Link>
+          </>
         }
       />
 
@@ -216,21 +264,7 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
                         信誉 {a.subject.creditScore} · 未到场 {a.subject.noShowCount} 次
                       </p>
                     </div>
-                    <StatusPill
-                      tone={
-                        a.status === "COMPLETED"
-                          ? "moss"
-                          : a.status === "CONFIRMED"
-                            ? "moss"
-                            : a.status === "CHECKED_IN"
-                              ? "verify"
-                              : a.status === "NO_SHOW"
-                                ? "danger"
-                                : a.status.startsWith("CANCELLED")
-                                  ? "grey"
-                                  : "clay"
-                      }
-                    >
+                    <StatusPill tone={statusTone(a.status)}>
                       {appointmentStatusLabel[a.status as AppointmentStatus] ?? a.status}
                     </StatusPill>
                   </div>
@@ -310,33 +344,10 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
           </div>
         ) : (
           <div className="mt-3 space-y-2">
-            {data.slots.map((slot) => {
-              const fill = slot.capacity === 0 ? 0 : slot.bookedCount / slot.capacity;
-              return (
-                <div key={slot.id} className="rounded-card border border-line bg-surface px-3 py-2.5">
-                  <div className="flex items-baseline justify-between">
-                    <span className="num text-[13px] font-medium text-ink">
-                      {formatDayCN(new Date(slot.startAt))} {formatHM(new Date(slot.startAt))}–
-                      {formatHM(new Date(slot.endAt))}
-                    </span>
-                    <span
-                      className={cn(
-                        "num text-[11px]",
-                        slot.remaining === 0 ? "text-danger" : "text-ink-soft",
-                      )}
-                    >
-                      {slot.bookedCount}/{slot.capacity}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-mist">
-                    <div
-                      className={cn("h-full rounded-full", slot.remaining === 0 ? "bg-clay" : "bg-moss")}
-                      style={{ width: `${Math.round(fill * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+            <SlotSchedule slots={scheduleSlots} today={today} onSelect={setOpenSlotId} />
+            <p className="px-1 text-[11px] leading-5 text-ink-soft">
+              有人约就转红：一对一写预约者姓名，团体写已约/容量。点格子看这一段都有谁。
+            </p>
           </div>
         )}
 
@@ -371,9 +382,120 @@ export function ResearcherExperimentDetail({ experimentId }: { experimentId: str
         </div>
       </Modal>
 
+      {/* 点课程表里的一段：谁约的、现在还能做什么 */}
+      <Modal
+        open={openSlot !== null}
+        onClose={() => setOpenSlotId(null)}
+        title={
+          openSlot
+            ? `${formatDayCN(new Date(openSlot.startAt))} ${formatHM(new Date(openSlot.startAt))}–${formatHM(new Date(openSlot.endAt))}`
+            : ""
+        }
+      >
+        {openSlot ? (
+          <>
+            <div className="flex items-baseline justify-between rounded-[8px] bg-mist px-2.5 py-2">
+              <span className="text-[12px] text-ink-soft">
+                {openSlot.bookedCount === 0
+                  ? "这一段还空着"
+                  : openSlot.bookedCount >= openSlot.capacity
+                    ? "这一段已经约满"
+                    : "这一段还有空位"}
+              </span>
+              <span className="num text-[14px] font-semibold text-ink">
+                {openSlot.bookedCount}/{openSlot.capacity}
+              </span>
+            </div>
+
+            {openBookings.length === 0 ? (
+              <p className="px-1 py-5 text-center text-[12px] text-ink-soft">
+                还没人报名这一段。想撤掉它得去「编辑实验」。
+              </p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {openBookings.map((a) => (
+                  <div key={a.id} className="rounded-[8px] border border-line px-2.5 py-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[14px] font-medium text-ink">{a.subject.name}</span>
+                          <VerifiedBadge verified={a.subject.studentVerified} />
+                          {a.subject.lowCredit ? <StatusPill tone="danger">信誉低</StatusPill> : null}
+                        </div>
+                        <p className="num mt-0.5 text-[11px] leading-4 text-ink-soft">
+                          {a.subject.school ?? "未填学校"} · 信誉 {a.subject.creditScore} · 未到场{" "}
+                          {a.subject.noShowCount} 次
+                        </p>
+                      </div>
+                      <StatusPill tone={statusTone(a.status)}>
+                        {appointmentStatusLabel[a.status as AppointmentStatus] ?? a.status}
+                      </StatusPill>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {a.canConfirm ? (
+                        <Button
+                          size="sm"
+                          loading={act.isPending}
+                          onClick={() => act.mutate({ id: a.id, action: "confirm" })}
+                        >
+                          确认预约
+                        </Button>
+                      ) : null}
+                      {a.canVerify ? (
+                        <Button
+                          size="sm"
+                          loading={act.isPending}
+                          onClick={() => act.mutate({ id: a.id, action: "verify" })}
+                        >
+                          确认到场
+                        </Button>
+                      ) : null}
+                      {a.canMarkNoShow ? (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={act.isPending}
+                          onClick={() => act.mutate({ id: a.id, action: "no-show" })}
+                        >
+                          标记未到
+                        </Button>
+                      ) : null}
+                      {a.canRelease ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={act.isPending}
+                          onClick={() => act.mutate({ id: a.id, action: "release" })}
+                        >
+                          释放名额
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button variant="outline" size="lg" block className="mt-3" onClick={() => setOpenSlotId(null)}>
+              关闭
+            </Button>
+          </>
+        ) : null}
+      </Modal>
+
       <TabBar role="RESEARCHER" />
     </main>
   );
+}
+
+/** 预约状态 → 徽章配色：报名者列表和时段弹窗共用，免得两处颜色对不上 */
+function statusTone(status: string): "moss" | "verify" | "danger" | "grey" | "clay" {
+  if (status === "COMPLETED" || status === "CONFIRMED") return "moss";
+  if (status === "CHECKED_IN") return "verify";
+  if (status === "NO_SHOW") return "danger";
+  if (status.startsWith("CANCELLED")) return "grey";
+  return "clay";
 }
 
 function Stat({

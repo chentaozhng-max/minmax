@@ -1,5 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/http";
+import { makeChatSessionRepository } from "@/adapters/db/prisma/chat-session-repo";
+import { makeSchedulingQuery } from "@/adapters/db/prisma/scheduling-query";
+
+/**
+ * 会话读写的唯一入口。
+ *
+ * 重构前 agent.ts 有 7 处 `prisma.chatSession.update` 重复同一件事，
+ * 现在全部走这个仓储。装配点在模块顶部，测试可换成手写假实现。
+ */
+const chatSessions = makeChatSessionRepository(prisma);
+const schedulingQuery = makeSchedulingQuery(prisma);
 import { checkEligibility } from "@/lib/credit";
 import {
   ACTIVE_APPOINTMENT_STATUSES,
@@ -8,11 +19,14 @@ import {
   parseMessages,
   stringifyMessages,
   type ChatMessage,
+  type ExperimentType,
 } from "@/lib/domain";
 import { formatDayCN, formatForPrompt, formatHM, formatSlotRange, HOUR } from "@/lib/time";
 import { parseVaguePreferred, rankSlots, type TimeWindow } from "@/lib/matching";
 import { bookSlot } from "@/server/appointments";
-import { chatWithTools, llmConfigured, type LlmMessage, type LlmToolSpec } from "@/server/llm";
+import { getLlm, type LlmMessage } from "@/adapters/llm";
+import { createToolRegistry } from "@/tools";
+import type { AgentContext, ToolContext, ToolSink } from "@/tools";
 
 const MAX_TURNS = 12;
 const MAX_SLOTS_IN_PROMPT = 24;
@@ -30,6 +44,7 @@ export type SlotView = {
 export type ChatTurnResult = {
   mode: "llm" | "form";
   state: string;
+  experimentType: ExperimentType;
   messages: ChatMessage[];
   suggestedSlots: SlotView[];
   availableSlots: SlotView[];
@@ -56,116 +71,98 @@ function toSlotView(slot: {
   };
 }
 
+/**
+ * 载入一次对话所需的全部上下文。
+ *
+ * 这里只做三件事：拿数据 → 缺了就报 404 → 按展示需要排序截断。
+ * 真实 SQL 全部在 adapters/db/prisma/scheduling-query.ts，本文件不再出现 prisma。
+ *
+ * 注意 experiment / subject 的形状不再是 Prisma 的完整模型，而是端口定义的
+ * 最小记录 —— 所以下面每个字段访问都必须是显式的（这正是我们要的：用什么取什么）。
+ */
 export async function loadContext(experimentId: string, subjectId: string, now = new Date()) {
-  const experiment = await prisma.experiment.findUnique({
-    where: { id: experimentId },
-    include: { researcher: true },
-  });
+  const experiment = await schedulingQuery.findExperimentDetail(experimentId);
   if (!experiment) throw new ApiError(404, "实验不存在");
-  const subject = await prisma.user.findUnique({ where: { id: subjectId } });
+  const subject = await schedulingQuery.findSubjectProfile(subjectId);
   if (!subject) throw new ApiError(404, "用户不存在");
 
-  const available = await prisma.slot.findMany({
-    where: {
-      experimentId,
-      startAt: { gt: now },
-      // SQLite 不支持字段间比较，这里先取全部再用内存过滤
-    },
-    orderBy: { startAt: "asc" },
-    take: 60,
-  });
+  const upcoming = await schedulingQuery.findUpcomingSlots(experimentId, now, 60);
 
-  const availableSlots = available
+  // SQLite 不支持字段间比较，所以「已满」在这里用内存过滤（重构前就是这个行为）
+  const availableSlots = upcoming
     .filter((s) => s.bookedCount < s.capacity)
     .slice(0, MAX_SLOTS_IN_PROMPT)
     .map(toSlotView);
 
-  const busy = await prisma.appointment.findMany({
-    where: { subjectId, status: { in: ACTIVE_APPOINTMENT_STATUSES } },
-    include: { slot: { include: { experiment: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+  const busy = await schedulingQuery.findActiveAppointments(subjectId, ACTIVE_APPOINTMENT_STATUSES);
 
   return { experiment, subject, availableSlots, busy, now };
 }
 
-const TOOLS: LlmToolSpec[] = [
-  {
-    type: "function",
-    function: {
-      name: "get_available_slots",
-      description: "读取该实验当前还有空位的时段（系统事实，不要自己编时间）",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_my_busy_slots",
-      description: "读取当前被试已有的预约，用于避让时间冲突",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_my_credit_status",
-      description: "读取当前被试的信誉分与是否被禁报名",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "propose_slots",
-      description: "向被试展示 2-3 个候选时段供其选择。展示后等待用户挑选，不要继续调用 book_slot",
-      parameters: {
-        type: "object",
-        properties: {
-          slotIds: {
-            type: "array",
-            items: { type: "string" },
-            description: "候选时段的 id，必须来自 get_available_slots 的结果",
-          },
-          reasonText: { type: "string", description: "一句话说明为什么推荐这几个" },
+/**
+ * 把 loadContext 的返回值适配成工具层认识的形状。
+ *
+ * 为什么要转换而不是直接用：
+ *   tools/ 不能 import server/agent.ts（会循环依赖），所以两边靠结构化的最小形状对接。
+ * 副作用注入：
+ *   reloadSlots / book 由 agent 层注入，工具层因此不需要知道 prisma 和 bookSlot 的存在。
+ */
+function toToolContext(
+  ctx: Awaited<ReturnType<typeof loadContext>>,
+  sink: ToolSink,
+): ToolContext<AgentContext> {
+  const { experiment, subject, availableSlots, busy, now } = ctx;
+
+  return {
+    ctx: {
+      experiment: {
+        id: experiment.id,
+        title: experiment.title,
+        durationMin: experiment.durationMin,
+        location: experiment.location,
+        minCreditScore: experiment.minCreditScore,
+        needsVerification: experiment.needsVerification,
+      },
+      subject: {
+        id: subject.id,
+        creditScore: subject.creditScore,
+        noShowCount: subject.noShowCount,
+        bannedUntil: subject.bannedUntil,
+        studentVerified: subject.studentVerified,
+      },
+      availableSlots,
+      busy: busy.map((a) => ({
+        status: a.status,
+        slot: {
+          startAt: a.slot.startAt,
+          endAt: a.slot.endAt,
+          experiment: { title: a.slot.experiment.title },
         },
-        required: ["slotIds", "reasonText"],
+      })),
+      now,
+      // 工具要「最新余位」时调这个，而不是自己去查库
+      reloadSlots: async () => {
+        const fresh = await loadContext(experiment.id, subject.id, now);
+        return fresh.availableSlots;
+      },
+      // 锁位 + 建预约也由这里注入
+      book: async (slotId: string) => {
+        const appointment = await bookSlot({
+          userId: subject.id,
+          slotId,
+          now,
+          source: "AGENT",
+        });
+        return { id: appointment.id, status: appointment.status };
       },
     },
-  },
-  {
-    type: "function",
-    function: {
-      name: "book_slot",
-      description: "锁定时段并创建预约。只有被试明确选定某个时段后才调用",
-      parameters: {
-        type: "object",
-        properties: { slotId: { type: "string", description: "被选中的时段 id" } },
-        required: ["slotId"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "join_waitlist",
-      description: "没有可用时段时，登记候补",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "escalate_to_researcher",
-      description: "被试需要人工沟通时，给主试留言",
-      parameters: {
-        type: "object",
-        properties: { message: { type: "string", description: "给主试的留言" } },
-        required: ["message"],
-      },
-    },
-  },
-];
+    sink,
+    now,
+  };
+}
+
+/** 工具注册表：加能力只需改 tools/index.ts，本文件不动 */
+const toolRegistry = createToolRegistry();
 
 function buildSystemPrompt(
   ctx: Awaited<ReturnType<typeof loadContext>>,
@@ -219,7 +216,7 @@ ${formatForPrompt(now)}（Asia/Shanghai，UTC+8）
 
 ## 实验信息
 标题：${experiment.title}
-主试：${experiment.researcher.name}
+主试：${experiment.researcherName}
 地点：${experiment.location}
 时长：${experiment.durationMin} 分钟
 奖励金额：${experiment.rewardText}
@@ -282,12 +279,13 @@ function toLlmMessages(system: string, history: ChatMessage[]): LlmMessage[] {
 }
 
 export async function getOrCreateSession(experimentId: string, subjectId: string) {
-  const existing = await prisma.chatSession.findUnique({
-    where: { experimentId_subjectId: { experimentId, subjectId } },
-  });
+  const existing = await chatSessions.findByExperimentAndSubject(experimentId, subjectId);
   if (existing) return existing;
-  return prisma.chatSession.create({
-    data: { experimentId, subjectId, state: ChatState.COLLECTING_AVAILABILITY, messages: "[]" },
+  return chatSessions.create({
+    experimentId,
+    subjectId,
+    state: ChatState.COLLECTING_AVAILABILITY,
+    messages: "[]",
   });
 }
 
@@ -331,87 +329,16 @@ export async function getChatView(experimentId: string, subjectId: string): Prom
   const suggestedSlots = collectSuggestedSlots(messages, ctx.availableSlots);
 
   return {
-    mode: llmConfigured() ? "llm" : "form",
+    mode: getLlm().configured() ? "llm" : "form",
     state: session.state,
+    experimentType: ctx.experiment.type,
     messages,
     suggestedSlots,
     availableSlots: ctx.availableSlots,
-    notice: llmConfigured() ? null : "排期助手暂时不可用，直接选择你能来的时段即可。",
+    notice: getLlm().configured() ? null : "排期助手暂时不可用，直接选择你能来的时段即可。",
     blocked,
     appointmentId: null,
   };
-}
-
-/** 工具执行：所有时间事实都从这里来，LLM 只做选择 */
-async function execTool(
-  name: string,
-  args: Record<string, unknown>,
-  ctx: Awaited<ReturnType<typeof loadContext>>,
-  sink: { state?: string; appointmentId?: string; bookedLabel?: string },
-): Promise<unknown> {
-  const { experiment, subject, now } = ctx;
-
-  switch (name) {
-    case "get_available_slots": {
-      const fresh = await loadContext(experiment.id, subject.id, now);
-      return { slots: fresh.availableSlots.map((s) => ({ id: s.id, label: s.label, remaining: s.remaining })) };
-    }
-    case "get_my_busy_slots": {
-      const busy = await prisma.appointment.findMany({
-        where: { subjectId: subject.id, status: { in: ACTIVE_APPOINTMENT_STATUSES } },
-        include: { slot: { include: { experiment: true } } },
-      });
-      return {
-        slots: busy.map((a) => ({
-          label: formatSlotRange(a.slot.startAt, a.slot.endAt),
-          experiment: a.slot.experiment.title,
-          status: a.status,
-        })),
-      };
-    }
-    case "get_my_credit_status":
-      return {
-        creditScore: subject.creditScore,
-        noShowCount: subject.noShowCount,
-        bannedUntil: subject.bannedUntil?.toISOString() ?? null,
-        studentVerified: subject.studentVerified,
-        minCreditScore: experiment.minCreditScore,
-        needsVerification: experiment.needsVerification,
-      };
-    case "propose_slots": {
-      const ids = Array.isArray(args.slotIds) ? (args.slotIds as string[]) : [];
-      const fresh = await loadContext(experiment.id, subject.id, now);
-      const picked = fresh.availableSlots.filter((s) => ids.includes(s.id)).slice(0, 3);
-      if (picked.length === 0) {
-        return { ok: false, error: "这些时段已经不可用，请重新选择" };
-      }
-      sink.state = ChatState.PROPOSED;
-      return { ok: true, reason: String(args.reasonText ?? ""), slots: picked };
-    }
-    case "book_slot": {
-      const slotId = String(args.slotId ?? "");
-      const target = ctx.availableSlots.find((s) => s.id === slotId);
-      if (!target) return { ok: false, error: "该时段不在候选列表中" };
-      try {
-        const appointment = await bookSlot({ userId: subject.id, slotId, now, source: "AGENT" });
-        sink.state = ChatState.BOOKED;
-        sink.appointmentId = appointment.id;
-        sink.bookedLabel = target.label;
-        return { ok: true, appointmentId: appointment.id, label: target.label, status: appointment.status };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "预订失败";
-        return { ok: false, error: message };
-      }
-    }
-    case "join_waitlist":
-      sink.state = ChatState.WAITLIST;
-      return { ok: true };
-    case "escalate_to_researcher":
-      sink.state = ChatState.ESCALATED;
-      return { ok: true, delivered: String(args.message ?? "") };
-    default:
-      return { ok: false, error: `未知工具 ${name}` };
-  }
 }
 
 const FALLBACK_OPENING = (durationMin: number, location: string) =>
@@ -453,13 +380,11 @@ export async function sendTurn(params: {
           : `这个实验你暂时报不了：${blocked.message}。`,
       createdAt: now.toISOString(),
     });
-    await prisma.chatSession.update({
-      where: { id: session.id },
-      data: { messages: stringifyMessages(history), state: ChatState.CLOSED },
-    });
+    await chatSessions.save(session.id, ChatState.CLOSED, stringifyMessages(history));
     return {
       mode: "form",
       state: ChatState.CLOSED,
+      experimentType: ctx.experiment.type,
       messages: history,
       suggestedSlots: [],
       availableSlots: ctx.availableSlots,
@@ -478,13 +403,11 @@ export async function sendTurn(params: {
       content: "我们聊得有点久了，直接选时段更快——下面这些还有空位。",
       createdAt: now.toISOString(),
     });
-    await prisma.chatSession.update({
-      where: { id: session.id },
-      data: { messages: stringifyMessages(history), state: ChatState.PROPOSED },
-    });
+    await chatSessions.save(session.id, ChatState.PROPOSED, stringifyMessages(history));
     return {
       mode: "form",
       state: ChatState.PROPOSED,
+      experimentType: ctx.experiment.type,
       messages: history,
       suggestedSlots: [],
       availableSlots: ctx.availableSlots,
@@ -494,19 +417,17 @@ export async function sendTurn(params: {
     };
   }
 
-  if (!llmConfigured()) {
+  if (!getLlm().configured()) {
     push({
       role: "assistant",
       content: "排期助手暂时不可用，直接选一个你能来的时段吧。",
       createdAt: now.toISOString(),
     });
-    await prisma.chatSession.update({
-      where: { id: session.id },
-      data: { messages: stringifyMessages(history), state: ChatState.PROPOSED },
-    });
+    await chatSessions.save(session.id, ChatState.PROPOSED, stringifyMessages(history));
     return {
       mode: "form",
       state: ChatState.PROPOSED,
+      experimentType: ctx.experiment.type,
       messages: history,
       suggestedSlots: [],
       availableSlots: ctx.availableSlots,
@@ -516,13 +437,13 @@ export async function sendTurn(params: {
     };
   }
 
-  const sink: { state?: string; appointmentId?: string; bookedLabel?: string } = {};
+  const sink: ToolSink = {};
   const system = buildSystemPrompt(ctx, parseVaguePreferred(params.text, now));
 
   try {
     for (let step = 0; step < 5; step += 1) {
       const llmMessages = toLlmMessages(system, history);
-      const reply = await chatWithTools({ messages: llmMessages, tools: TOOLS });
+      const reply = await getLlm().chat({ messages: llmMessages, tools: toolRegistry.specs() });
 
       if (reply.toolCalls.length === 0) {
         push({
@@ -542,7 +463,7 @@ export async function sendTurn(params: {
       push(record);
 
       for (const tc of reply.toolCalls) {
-        const result = await execTool(tc.name, tc.args, ctx, sink);
+        const result = await toolRegistry.exec(tc.name, tc.args, toToolContext(ctx, sink));
         const stored = record.toolCalls?.find((x) => x.id === tc.id);
         if (stored) stored.result = result;
       }
@@ -563,13 +484,11 @@ export async function sendTurn(params: {
       content: "网络有点问题，排期助手先歇一下。你直接选时段吧，一样能预约。",
       createdAt: new Date().toISOString(),
     });
-    await prisma.chatSession.update({
-      where: { id: session.id },
-      data: { messages: stringifyMessages(history), state: ChatState.PROPOSED },
-    });
+    await chatSessions.save(session.id, ChatState.PROPOSED, stringifyMessages(history));
     return {
       mode: "form",
       state: ChatState.PROPOSED,
+      experimentType: ctx.experiment.type,
       messages: history,
       suggestedSlots: [],
       availableSlots: ctx.availableSlots,
@@ -580,16 +499,14 @@ export async function sendTurn(params: {
   }
 
   const nextState = sink.state ?? session.state;
-  await prisma.chatSession.update({
-    where: { id: session.id },
-    data: { messages: stringifyMessages(history), state: nextState },
-  });
+  await chatSessions.save(session.id, nextState, stringifyMessages(history));
 
   const freshAvailable = (await loadContext(params.experimentId, params.subjectId, new Date())).availableSlots;
 
   return {
     mode: "llm",
     state: nextState,
+    experimentType: ctx.experiment.type,
     messages: history,
     suggestedSlots: sink.appointmentId ? [] : collectSuggestedSlots(history, freshAvailable),
     availableSlots: freshAvailable,

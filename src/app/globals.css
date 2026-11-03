@@ -16,6 +16,7 @@
   --mist: #edf0e9;
   --warn: #b0731f;
   --danger: #a8352a;
+  --danger-tint: #f9e9e6;
   --verify: #2f6f9f;
   --verify-tint: #e9f0f6;
 
@@ -153,6 +154,13 @@
   background: linear-gradient(180deg, #eceee8 0%, #e4e7e0 100%);
   animation: skeleton-pulse 1.6s ease-in-out infinite;
   border-radius: 6px;
+}
+
+/* 圆形骨架（头像位）。
+   必须和 .skeleton 同层写：.skeleton 不在 @layer 里，
+   优先级高于 Tailwind 的 rounded-full，靠工具类改不过来。 */
+.skeleton-round {
+  border-radius: 9999px;
 }
 
 @media (prefers-reduced-motion: reduce) {

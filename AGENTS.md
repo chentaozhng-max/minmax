@@ -1,42 +1,55 @@
 # AGENTS.md — 接手这个仓库先读这一页
 
-写给**接手的 AI / 新同事**：读完能跑起来、改对地方、不踩已知的坑。
-产品介绍看 [README.md](./README.md)，历史取舍看 [DECISIONS.md](./DECISIONS.md)（按编号，改行为要补一条）。
+写给**接手的 AI / 新同事**。读完能跑起来、改对地方、不踩已知的坑。
+
+- 产品介绍（给人看）：[README.md](./README.md)
+- 为什么这么分层、什么算越界：[ARCHITECTURE.md](./ARCHITECTURE.md)
+
+> **这个仓库在 2026-11-02/03 整体重构过一次**：从「按有没有副作用切」（`lib/` + `server/`）
+> 改成「领域层 / 应用层 / 适配层」（`domain/` + `application/` + `adapters/`）。
+> 产品行为零变化。如果你在旧对话或旧 commit 里看到 `src/server/xx.ts` 里写着业务逻辑，
+> 那个路径现在可能只是兼容转发壳——先看第 3 节目录地图。
 
 ---
 
-## 0. 一句话说清是什么
+## 0. 三十秒版
 
-**PsyMatch**：心理学实验的**报名与排期**平台。主试发布实验 + 可约时段，被试挑时段报名，
-然后走两段式确认 → 现场一键签到 → 信誉分结算。
+**PsyMatch**：心理学实验的**报名与排期**平台。主试发布实验 + 时段，被试挑时段报名，
+两段式确认 → 现场一键签到 → 信誉分结算。
 
-- 技术栈：Next.js 15（App Router、React 19、Server Components）+ Prisma 6 + SQLite
-- 形态：移动端优先（基准 375×812），界面全中文，无管理后台
-- 仓库：`E:/minmax`（Windows 本地），线上分享链接见第 8 节
+外加一个 **Agent 助手**：能按自然语言条件（「周三下午」「别太久」「奖励高的」）从全部实验里
+筛出候选；也能在单门实验里帮着挑时段。
+
+```bash
+npm install && npm run setup && npm run dev     # → http://localhost:3000
+```
+
+**不知道从哪下手时，按这个顺序看**：
+1. 第 3 节目录地图 → 找到你要改的东西在哪一层
+2. 第 4 节分层判据 → 确认你新建的文件该放哪
+3. 第 5 节改完要跑什么 → 别交未验证的代码
 
 ---
 
-## 1. 跑起来（三条命令）
+## 1. 跑起来
+
+### 1.1 三条命令
 
 ```bash
 npm install
-npm run setup     # prisma generate + 建表 + 灌种子数据（等价于 db:push + db:seed）
+npm run setup     # prisma generate + 建表 + 灌种子（= db:push + db:seed）
 npm run dev       # http://localhost:3000
 ```
 
-首次 `npm install` 走 `.npmrc` 里的 npmmirror 镜像；换机器网络不好时加
-`--registry=https://registry.npmmirror.com`。
+**不要手动创建 `.env`**。`setup` / `dev` / `build` / `start` 前面都会跑
+`scripts/ensure-env.mjs`：发现没有 `.env` 就按 `.env.example` 复制一份。
+`.env` 在 `.gitignore` 里，新 clone 的目录没有它，缺了 Prisma 会报
+`P1012 Environment variable not found: DATABASE_URL`。
 
-**不要手动创建 `.env`**。三个 `npm run` 前面都会跑 `scripts/ensure-env.mjs`：发现没有
-`.env` 就按 `.env.example` 复制一份。`.env` 在 `.gitignore` 里，新 clone / 从 GitHub 下载
-的目录都没有它，缺了会让 Prisma 报 `P1012 Environment variable not found: DATABASE_URL`
-（v1.2 之前就是「双击启动提示启动失败」的根因）。同理，启动脚本的 `[4/7]` 也做这件事。
+**开发环境不需要配任何 key**：`LLM_API_KEY` 留空时助手自动降级——门厅页直接搜一次给你列表，
+单实验页换成时段多选表单，全部功能可用。
 
-**开发环境不需要配任何 key**：`.env` 里 `LLM_API_KEY` 留空时，选时段页自动降级成
-「时段多选表单」，全部功能可用（只是没有自然语言推荐）。`SMTP_*` 留空时验证码打到
-控制台 + `mock-email.log`。
-
-**演示账号**（验证码统一填 `123456`）：
+### 1.2 演示账号（验证码统一 `123456`）
 
 | 角色 | 姓名 | 手机号 | 用途 |
 |---|---|---|---|
@@ -47,14 +60,17 @@ npm run dev       # http://localhost:3000
 | 被试 | 许一然 | `13900000003` | 信誉 72 + 未认证，报不了门槛 80 的实验 |
 | 被试 | 沈栗 | `13900000004` | 3 次未到场，禁报名中 |
 
-**Windows 双击版**：`启动 PsyMatch.cmd` 按 `[1/6]`–`[6/6]` 依次找 Node → 腾端口 →
-补依赖 → 建库 → 补 Prisma Client 与构建产物 → 前台跑 `next start`，浏览器由
-`scripts/open-when-ready.mjs` 轮询端口、就绪后才打开（不再是固定等 5 秒）。
-这个 `.cmd` 是 **GBK + CRLF** 编码，别用编辑器直接存 UTF-8：带 BOM 会让第一行报错，
-不带 BOM 又会在 `chcp 65001` 下触发 cmd 的按字节截断 bug（中文注释被腰斩当成命令执行）。
-文案统一改 `scripts/make-launcher.py` 里的字符串再跑一次，它会按正确编码生成。
-node 那几行单独 `chcp 65001`，否则 `[build]` / `[scheduler]` 的中文日志会显示成乱码。
-这两个只是给人用的糖，AI 用 npm script 就行。
+一键登录（仅开发）：`/api/dev/login?phone=13900000001&to=/assistant/chat`
+要 `ENABLE_DEV_LOGIN=true`，默认 404。**线上绝对不能开**（不校验验证码 = 任何人可冒充任何人）。
+
+### 1.3 Windows 双击启动
+
+`启动 PsyMatch.cmd` 按 `[1/7]`–`[7/7]` 依次：找 Node → 腾端口 → 补依赖 → 补 `.env` →
+建库 → 补 Prisma Client 与构建产物 → 前台跑 `next start`，就绪后自动开浏览器。
+
+这个 `.cmd` 是 **GBK + CRLF** 编码，别用编辑器直接存 UTF-8（带 BOM 第一行报错，不带 BOM 会在
+`chcp 65001` 下触发 cmd 按字节截断，中文注释被腰斩当成命令执行）。改文案走
+`scripts/make-launcher.py` 重新生成。AI 用 npm script 就行，不用管这个。
 
 ---
 
@@ -63,8 +79,8 @@ node 那几行单独 `chcp 65001`，否则 `[build]` / `[scheduler]` 的中文�
 ### 2.1 不要直接调 `npx next`
 
 ```bash
-npx next dev        # ✗ 在本机会崩
-npm run dev         # ✓ 必须走这个
+npx next dev        # ✗ 本机会崩
+npm run dev         # ✓
 ```
 
 `dev / build / start` 都经 `scripts/next-run.mjs` 包装，它做两件事：
@@ -72,69 +88,71 @@ npm run dev         # ✓ 必须走这个
 1. `-r scripts/readlink-patch.cjs`：本机 E 盘对普通文件 `fs.readlink` 返回 `EISDIR`
    （正常 Windows 应为 `EINVAL`），webpack / Next 依赖快照会当致命错误直接崩，补丁只改错误码。
 2. 从 `NODE_OPTIONS` 里摘掉宿主注入的文件系统 shim（把 `fs.rmSync` 交给回收站程序，
-   清空 `.next` 上万文件时会 `ETIMEDOUT`）。设 `KEEP_NODE_OPTIONS=1` 可关闭该行为。
+   清空 `.next` 上万文件时会 `ETIMEDOUT`）。`KEEP_NODE_OPTIONS=1` 可关闭该行为。
 
 放到 Linux 服务器上这套包装是幂等的，不会坏事。
 
 ### 2.2 构建前必须停掉正在跑的服务
 
 `prisma generate` 要覆盖 `node_modules/.prisma/client/query_engine-windows.dll.node`，
-Windows 下文件被占用会 `EPERM`。停服务的姿势：
+Windows 下文件被占用会 `EPERM`。
+
+**这个坑的杀伤力比看起来大**：`prisma db push --skip-generate` 会成功，`tsc` **也会通过**
+（`index.d.ts` 是旧的，但类型检查不了运行时）。结果是编译全绿、运行时
+`prisma.某个新模型` 是 `undefined`、接口 500 `Cannot read properties of undefined`。
 
 ```bash
-# Git Bash 里最省事
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id \$_.OwningProcess -Force -Confirm:\$false }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -like '*minmax*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
 ```
+
+**改完 schema 的判据（比看日志可靠）**：
+
+```bash
+node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();console.log(typeof p.新模型)"
+```
+
+`object` 才算生成成功，`undefined` 就是没同步。
 
 另外：**构建会整体替换 `.next`，正在跑的 `next start` 会随之崩**，构建完要重启。
 
 ### 2.3 构建失败先重试，不要立刻改代码
 
 本机 E 盘 `next build --turbopack` 经常第一次失败（`ENOENT _buildManifest.js.tmp.*`、
-`build-manifest.json` 缺失等"自己刚写的文件不见了"）。标准做法是重试：
+`build-manifest.json` 缺失等「自己刚写的文件不见了」）。重试 2–3 次。
 
-```bash
-for i in 1 2 3; do
-  node scripts/next-run.mjs build --turbopack > build.log 2>&1
-  [ -f .next/BUILD_ID ] && { echo "BUILD OK attempt $i"; break; } || echo "attempt $i failed"
-done
-```
-
-判断构建**成功**的凭据不是"没报错"，而是这五个文件都在：
+判构建**成功**的凭据不是「没报错」，而是这五个文件都在：
 `.next/{BUILD_ID,build-manifest.json,routes-manifest.json,prerender-manifest.json,server/app-paths-manifest.json}`。
 
 ### 2.4 `node_modules/.prisma/client/index.js` 不能丢
 
 被中断的 `prisma generate` 会先删掉它再重建。它不在时**整站 500**。
-症状：页面全白 + 日志 `@prisma/client did not initialize yet`。
-修：`npx prisma generate`（先停服务）。
+症状：页面全白 + 日志 `@prisma/client did not initialize yet`。修：停服务 → `npx prisma generate`。
 
 ### 2.5 返回箭头禁止用 `<Link>` 硬跳
 
 `src/components/page-header.tsx` 的 `back` 统一走 `router.back()`，传进来的路径只当
 「没有历史时的兜底」。以前对话页用 `<Link href="/messages">`、消息页用 `router.back()`，
-两边方向相反 → 「消息 ⇄ 对话」无限互相弹回，退不出去（DECISIONS 第 32 条）。
+两边方向相反 → 「消息 ⇄ 对话」无限互相弹回（决策表 #32）。
 **底部 tab 的根页面（首页 / 消息 / 我的 / 我的实验）不要挂返回箭头。**
 
 ### 2.6 奖励金额不要直接渲染 `rewardText`
 
-一律走 `src/lib/reward.ts`：
+一律走 `@/domain/reward`（`src/lib/reward.ts` 是转发壳）：
 
 ```ts
 rewardYuan("¥30")        // 30 | null
 rewardAmountText("¥30")  // "¥30"
-rewardLabel("¥30")       // "奖励 ¥30"（列表里的行内写法）
+rewardLabel("¥30")       // "奖励 ¥30"
 toRewardText("30")       // "¥30"（表单输入 → 入库值，0/空返回 ""）
 ```
 
-卡片右上角用 `<RewardTag text={...} />`（`src/components/reward-tag.tsx`）。
-库里 `rewardText` 只允许 `^¥\d{1,4}$`，`1 学分` 这类老数据由 `scripts/prepare-db.mjs`
-在启动时幂等换算成 `¥30`。别再引入「学分」口径。
+卡片右上角用 `<RewardTag text={...} />`。库里 `rewardText` 只允许 `^¥\d{1,4}$`，
+`scripts/prepare-db.mjs` 启动时幂等把「学分」老数据换算成 `¥30`。别再引入「学分」口径。
 
-### 2.7 `ENABLE_DEV_LOGIN` 线上绝对不要开
+### 2.7 聊天页不要放 `TabBar`
 
-`/api/dev/login?phone=...&to=...` 是不校验验证码的一键登录，只在自动化截图 / 回归时
-临时开（默认 404）。线上开启等于任何人可冒充任意账号。
+`TabBar` 是 `fixed bottom-0 z-40`，会把聊天输入框压在下面点不到。
+参考 `/assistant/chat` 和 `/experiments/[id]/chat`——两个聊天页都没有 TabBar，返回靠 `PageHeader`。
 
 ---
 
@@ -142,343 +160,346 @@ toRewardText("30")       // "¥30"（表单输入 → 入库值，0/空返回 ""
 
 ```
 prisma/
-  schema.prisma          数据模型（SQLite；枚举用 String，Json 用 TEXT 存 JSON 字符串）
-  seed.ts                2 主试 + 4 被试 + 5 实验 + 预约 / 申诉 / 私信
-  dev.db                 本地库（不进 git）
-
-src/app/                 页面 + API（App Router，21 个页面 / 28 个 route handler）
-  page.tsx               被试首页：搜索 + 筛选 + 实验卡片流
-  login/                 登录（选「我是被试 / 我是主试」→ 决定建号身份）
-  experiments/[id]/      实验详情
-    book-cta.tsx         底部「立即预约」按钮
-    chat/                选时段页（时段网格常驻 + 可选的自然语言助手）
-  appointments/          我的预约（确认 / 取消 / 签到）
-  messages/              消息：选时段记录 + 私信列表 / 私信对话
-  me/                    被试个人中心、信誉明细、认证
-  onboarding/            首次进入的完善资料（可跳过）
-  r/                     主试端（r = researcher）
-    experiments/         列表 / 新建 / 详情 / 编辑
-    messages/  appeals/  profile/
-  researchers/[id]/      主试主页（被试视角）
-  api/                   全部服务端校验与业务入口
-
-src/server/              业务服务层（有副作用、碰数据库）
-  appointments.ts        预约状态机、防超卖、取消结算
-  agent.ts               选时段助手：工具定义 + LLM 循环 + 降级
-  llm.ts                 OpenAI 兼容调用（25s 超时）
-  experiments.ts         列表查询、筛选、排序（低信誉沉底）
-  credit.ts  scheduler.ts  dm.ts  dm-page.ts  mail.ts
-
-src/lib/                 纯逻辑（可单测，不碰 IO）
-  domain.ts              枚举 + 所有 Zod schema（改动先看这里）
-  credit.ts              信誉分规则（扣分 / 禁期阶梯 / 资格判定）
-  matching.ts            撮合排序 + 中文模糊时间解析
-  reward.ts              奖励金额口径
-  time.ts                上海时区格式化（全站只用这里的函数）
-  auth.ts  page-auth.ts  http.ts  api-client.ts  prisma.ts  cn.ts  types.ts
-
-src/components/          通用 UI：page-header / tab-bar / experiment-card / slot-grid
-  ui/                    button / input / badge / dialog 等原子组件
-tests/                   Vitest 单测（纯逻辑）
-scripts/                 包装器、启动兜底、验收、截图（见第 6 节）
-DECISIONS.md             每个非显然取舍的原因，按编号追加
-CHANGELOG.md             每个版本改了什么（发版时同步更新）
+  schema.prisma        数据模型（SQLite：枚举用 String，Json 用 TEXT 存 JSON 字符串）
+  seed.ts              2 主试 + 4 被试 + 5 实验 + 预约 / 申诉 / 私信 / 通知
+  dev.db               本地库（不进 git）
 ```
 
----
+### src/domain/ — 领域层（零外部依赖，随便单测）
 
-## 4. 架构约定
-
-### 4.1 API 一律返回信封
-
-```ts
-{ code: 0, message: "ok", data: T }        // 成功
-{ code: 409, message: "这个时段刚被约满", data: null }  // 失败（HTTP 状态码同 code）
-```
-
-写 route handler 的固定姿势：
-
-```ts
-export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
-  const user = await requireRole("RESEARCHER");   // 401/403 自动抛
-  const body = schema.parse(await req.json());    // ZodError 自动转 400
-  return ok(await doSomething(user, body));
-});
-```
-
-- `handle()`（`src/lib/http.ts`）把 `ApiError` / `ZodError` / 未知异常统一转成信封。
-- 客户端用 `api<T>()` / `postJson<T>()`（`src/lib/api-client.ts`），它解包信封、
-  把 `TypeError: Failed to fetch` 翻成中文，并且**只对幂等请求**开 `retryNetworkError`。
-- 参数校验的 schema 都在 `src/lib/domain.ts`，不要在 route 里手写 if 校验。
-
-### 4.2 认证
-
-- 两个 httpOnly Cookie：`pm_at`（access，2h）+ `pm_rt`（refresh，30d），JWT（jose，HS256）。
-- 页面：`await requirePage("RESEARCHER")`（`src/lib/page-auth.ts`），角色不符送回各自首页，不显示 404。
-- 接口：`requireUser()` / `requireRole("RESEARCHER")` / `requireRole(["SUBJECT", "RESEARCHER"])`。
-- **Cookie 的 `Secure` 按请求协议判断**（`isSecureRequest`），不要按 `NODE_ENV`——
-  否则手机用 `http://192.168.x.x:3000` 打开时 Cookie 被丢弃，表现为"登录成功又跳回登录页"。
-
-### 4.3 身份与导航
-
-- 角色 `SUBJECT` / `RESEARCHER` / `ADMIN`（无后台）。
-- 登录页选的「我是被试 / 我是主试」是**建号依据**；空账号（没发过实验、无信誉流水）允许切换身份，
-  有数据的账号拒登并提示切回。别改回"一律建被试"。
-- 底部栏：被试 4 格平铺（首页 / 预约 / 消息 / 我的）；主试 5 格，中间是**凸起的圆形「+」**
-  直达 `/r/experiments/new`。
-- 前端 toast 文案是产品语气的一部分，改文案别改成"系统提示"那套。
-
-### 4.4 数据模型的三个约定
-
-1. **枚举用 String 存**（SQLite 不支持 enum），取值常量 + Zod 校验在 `src/lib/domain.ts`。
-   加状态要同时改：`domain.ts` 常量 → 页面里的 label 映射 → 状态机判断。
-2. **Json 字段用 TEXT 存 JSON 字符串**（目前只有 `ChatSession.messages`，存对话历史），
-   读写走 `domain.ts` 里的 helper，不要直接在页面/路由里 `JSON.parse`。
-   注意 `Experiment.slots` **不是** JSON 字段，它是对 `Slot` 表的关系，别照抄错。
-3. **时段按半小时对齐**（`src/lib/time.ts` 与批量生成器），发布页默认时长 30 分钟。
-
-### 4.5 状态机（改这里最容易出事）
-
-**Experiment**：`DRAFT → PUBLISHED → CLOSED / FINISHED`
-
-**Appointment**（`src/server/appointments.ts` 是唯一入口）：
-
-```
-PENDING_SUBJECT_CONFIRM  ← 报名后先锁位（30 分钟不确认，定时任务自动释放）
-  → AWAITING_RESEARCHER ← 被试点「确认」
-  → CONFIRMED            ← 主试点「确认预约」
-  → CHECKED_IN           ← 被试现场一键签到（开始前 30 分钟 ~ 结束）
-  → COMPLETED            ← 主试点「确认到场」，双方信誉 +1
-另外：NO_SHOW / CANCELLED_BY_SUBJECT / CANCELLED_BY_RESEARCHER
-```
-
-两个容易被遗漏的分支：**签到在 `AWAITING_RESEARCHER` 状态下也允许**（主试忘了点确认，
-人已经来了不能卡住）；**主试可以「释放」还没确认的预约**（`releaseByResearcher`，
-名额回滚、不扣分），这是名额被锁死的唯一出口。
-
-规则（都在 `src/lib/credit.ts`，单测覆盖）：
-
-| 事件 | 后果 |
+| 文件 | 里面是什么 |
 |---|---|
-| 被试未到场 | -2 分，`noShowCount+1`，第 1–3 次禁 1 天，第 4 次起禁 7 天 |
-| 主试取消，距开始 **< 24h** | 这一条 -2，`noShowCount+1`（**逐条判断**：同场实验里远的那场不扣） |
-| 被试取消，距开始 **< 12h** | 不允许 |
-| 到场双方 | 各 +1，上限 100；到 100 不再写 `CreditEvent` |
-| 禁期 | 只延长不缩短；到期只清 `bannedUntil`，`noShowCount` 永久保留 |
+| `constants.ts` | 枚举 / 标签 / 状态集合（SQLite 没有 enum，全靠这里 + Zod 约束） |
+| `schemas.ts` | 所有请求体 Zod schema（**改接口先看这里**） |
+| `messages.ts` | `ChatSession.messages` 的结构与序列化 |
+| `credit.ts` | 信誉分规则：扣分 / 禁期阶梯 / 资格判定 |
+| `booking-rules.ts` | 报名资格 / 冲突 / 截止的纯判定 |
+| `experiment-rules.ts` | 实验可发布 / 可报名的判定 |
+| `matching.ts` | 撮合排序 `rankSlots` + 中文模糊时间解析 |
+| `reward.ts` | 奖励金额口径 |
+| `reminder-levels.ts` | 提醒三档规则（提前多久、文案档位） |
+| `search-criteria.ts` | 助手搜索的条件归一（「周三下午」→ 时间窗）+ 排序 |
+| `assistant-brief.ts` | 助手总览的撞车判定 |
+| `ports/` | **端口定义：接口只能写在这里**（清单见第 4.2 节） |
 
-**防超卖**必须用条件 UPDATE，不要写成「先查再改」：
+### src/application/ — 应用层（编排，不写业务判断）
 
-```ts
-const affected = await tx.$executeRaw`
-  UPDATE "Slot" SET "bookedCount" = "bookedCount" + 1
-  WHERE "id" = ${slot.id} AND "bookedCount" < "capacity"
-`;
-if (affected === 0) throw new ApiError(409, "这个时段刚刚被约满了，换一个吧");
-```
-
-**ChatSession**：`COLLECTING_AVAILABILITY → PROPOSED → BOOKED`（另有 `WAITLIST / ESCALATED / CLOSED`）。
-
-### 4.6 选时段助手的分工（别让模型决定业务）
-
-- `src/lib/matching.ts` 的 `rankSlots` **先排好序**：命中被试提到的时间 > 剩余容量多 > 更近。
-- 排好的候选注入 System Prompt，模型只负责解释和追问，**不能自己造时间**。
-- `book_slot` 工具会再校验 slot id 是否在候选集合里。
-- LLM 未配置 / 25s 超时 / 报错 / 聊满 12 轮 → 接口返回 `mode: "form"`，前端切成时段多选表单，
-  提交后走**同一个** `bookSlot()`。所以任何改动都要保证两条路径行为一致。
-
-### 4.7 时间与时区
-
-全部按 **Asia/Shanghai** 处理，格式化只用 `src/lib/time.ts` 的 `formatDayCN` / `formatHM` /
-`formatDateTimeCN` / `toShanghaiIso`。不要用 `toLocaleString()` 裸调（服务器时区可能不是 +8）。
-
----
-
-## 5. 环境变量
-
-复制 `.env.example` → `.env`（`.env` 已在 `.gitignore`，**key 不进 git**）。
-
-| 变量 | 说明 |
+| 文件 | 用例 |
 |---|---|
-| `DATABASE_URL` | 默认 `file:./dev.db`（相对 `prisma/` 解析） |
-| `JWT_SECRET` / `JWT_REFRESH_SECRET` | 上线必须换掉，否则任何旧 token 都能登进来 |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI 兼容接口；key 空 = 降级表单模式 |
-| `EDU_EMAIL_DOMAINS` | 教育邮箱后缀白名单，默认 `edu.cn,edu` |
-| `SMTP_HOST/PORT/USER/PASS` | 留空走 mock：验证码打到控制台 + `mock-email.log` |
-| `ENABLE_DEV_LOGIN` | 仅自测用，线上必须不设（见 2.7） |
-| `PORT` | `next-run.mjs` 在未显式传 `-p` 时读它 |
+| `book-slot.ts` | 锁位（含防超卖，走 `deps.uow.runInTransaction`） |
+| `publish-experiment.ts` | 发布 / 上下架 + 团体容量校验 |
+| `send-reminders.ts` | 到时提醒：挑人、生成文案、写通知 |
+| `export-schedule.ts` | 主试日程 CSV 构建（BOM / CRLF / RFC4180） |
+| `assistant-overview.ts` | 助手总览：我的安排 + 撞车 |
+| `search-experiments.ts` | 跨实验搜索：资格过滤 + 排序 + 「被筛掉的要告知」 |
 
----
+### src/adapters/ — 适配层（唯一允许碰外部世界）
 
-## 6. 改完必须做的三件事
+```
+llm/openai-compatible.ts   OpenAI 兼容调用（DeepSeek），读 LLM_EXTRA_BODY
+llm/mock.ts                按脚本返回，断网可演示
+llm/index.ts               getLlm() 按环境变量选实现
+db/prisma/                 所有 Prisma 实现（下面按用途分组）
+```
+
+`db/prisma/` 里 22 个文件：
+
+- **仓储（写）**：`slot-repo` `appointment-repo` `chat-session-repo`
+  `experiment-publish-repo` `direct-message-threads` `direct-message-messages`
+  `notification-repo` `assistant-thread-repo`
+- **查询端口（读，给 agent）**：`scheduling-query` `schedule-query` `assistant-query`
+- **页面查询端口（读，给 server component）**：`page-query` + `page-query-credit`
+  `page-query-experiment` `page-query-researcher`
+- **搜索**：`experiment-search`
+- **事务**：`unit-of-work`（`runInTransaction`）
+- `types.ts`：`PageQueryClientLike` 等最小接口，让测试能塞假 db
+
+### src/tools/ — Agent 工具（两个注册表）
+
+```
+registry.ts                ToolRegistry<C> 泛型，本身不认识具体 ctx
+context.ts                 AgentContext（房间：单实验）
+assistant-context.ts       AssistantContext（门厅：跨实验，注入 search 回调）
+index.ts                   createToolRegistry() / createAssistantToolRegistry()
+```
+
+**房间注册表 7 个**：`get_available_slots` `get_my_busy_slots` `get_my_credit_status`
+`propose_slots` `book_slot` `join_waitlist` `escalate_to_researcher`
+
+**门厅注册表 1 个**：`search_experiments`
+
+> 为什么是两个注册表而不是 8 个工具塞一起：房间的 7 个都以 `ctx.experiment` 为必填前提，
+> 门厅根本没有「当前实验」。硬塞会让模型在错误语义下调 `book_slot`。
+> 详见 ARCHITECTURE 决策表 #36。
+
+### src/server/ — 组装层 + 还没搬完的业务
+
+| 文件 | 说明 |
+|---|---|
+| `agent.ts` | 房间助手：加载上下文 + LLM 循环 + 降级（prisma 已归零） |
+| `assistant-agent.ts` | 门厅助手：跨实验编排 + 持久化 `AssistantThread` |
+| `appointments.ts` | 预约状态机 + 取消结算（**还直连 prisma，L6 欠账最大处**） |
+| `experiments.ts` | 首页列表查询 / 筛选 / 排序（低信誉沉底） |
+| `credit.ts` | 信誉分落库 |
+| `scheduler.ts` | 定时任务（提醒 1min / 重活 10min / 兜底 1h） |
+| `dm.ts` `dm-page.ts` `mail.ts` | 私信、邮件 |
+| `llm.ts` | 兼容转发壳 |
+
+### src/lib/ — 基础设施 glue + 兼容转发壳
+
+- **真东西**：`http.ts`（`handle()` 信封）`api-client.ts` `auth.ts` `page-auth.ts`
+  `prisma.ts` `time.ts`（全站时间格式化只走这里）`cn.ts` `types.ts`
+  `unread-count.ts` / `unread-store.ts`（未读红点 + 轮询 toast）
+- **转发壳**：`domain.ts` `credit.ts` `matching.ts` `reward.ts` —— 真身都在 `@/domain/`。
+  保留是为了 32 个调用方不用改 import。**新代码请直接 import `@/domain/...`。**
+
+### src/app/ — 页面与 API（25 个 page / 33 个 route handler）
+
+```
+page.tsx                  首页：搜索 + 筛选 + 实验卡片流
+experiments/[id]/         实验详情 → chat/ 单实验排期对话页
+assistant/                跨实验总览（只读：我的安排 + 撞车）
+assistant/chat/           ★ 门厅对话（按条件找实验）
+appointments/             我的预约（确认 / 取消 / 签到）
+messages/                 私信列表 + 对话
+me/                       个人中心 / 信誉明细 / 认证 / notifications/ 通知栏
+onboarding/               首次完善资料（可跳过）
+r/                        主试端：experiments 列表·新建·详情·编辑 / schedule 日程总表
+                          / appeals / messages / profile / verify
+researchers/[id]/         主试主页（被试视角）
+api/                      全部服务端校验与业务入口
+```
+
+### 其他
+
+```
+tests/                    50 个 Vitest 文件 / 543 用例（纯逻辑 + 适配器 + 页面查询）
+scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
+components/               page-header / tab-bar / experiment-card / slot-grid / ui/
+```
+
+**各层规模（2026-11-03 实测）**：domain 1967 行 / application 667 / adapters 2224 /
+tools 582 / server 1698 / app 6184 / lib 537 / components 1234。
+`application` 最薄——这是有意的，业务判断都沉在 `domain`，编排本来就短。
+
+## 4. 分层判据（新建文件该放哪）
+
+### 4.1 四层各自的边界
+
+| 层 | 能 import | 绝对不能碰 | 典型内容 |
+|---|---|---|---|
+| `domain/` | 只有 `zod`、`@/domain/*`、`node:*`、相对路径 | **一切外部**：prisma / next / axios / openai / `@/adapters` `@/application` `@/server` `@/app` `@/tools` `@/components` `@/lib` | 规则、状态机、纯函数、端口定义 |
+| `application/` | `@/domain/*`（含 `import type` 端口） | `@/adapters` / `@prisma/client` / `next` / `@/app` / `@/components` | 用例：调端口 + 调领域函数 |
+| `adapters/` | 什么都行 | —— | Prisma / fetch / LLM SDK |
+| `tools/` | `@/domain/*`、`@/tools/*` | **直接用数据库**（要用注入的回调） | 一个文件一个工具 |
+| `app/` | 什么都行，但 handler 要薄（≤40 行） | —— | 鉴权 + 校验 + 调 application/server |
+| `server/` | 什么都行 | —— | 组装依赖；还没搬完的业务 |
+
+### 4.2 端口清单
+
+| 端口 | 定义文件 | 实现 | 谁在用 |
+|---|---|---|---|
+| `LlmPort` | `ports/llm.ts` | `llm/openai-compatible` `llm/mock` | `server/agent` `server/assistant-agent` |
+| `SlotRepository` `AppointmentRepository` `ChatSessionRepository` `TransactionPort` | `ports/repositories.ts` | `db/prisma/{slot,appointment,chat-session}-repo` `unit-of-work` | `application/book-slot` `server/agent` |
+| `ExperimentPublishRepository` | `ports/experiment-repo.ts` | `db/prisma/experiment-publish-repo` | `application/publish-experiment` |
+| `SchedulingQueryPort` | `ports/queries.ts` | `db/prisma/scheduling-query` | `server/agent` |
+| `PageQueryPort` + 子端口 | `ports/page-queries.ts` | `db/prisma/page-query*` | 所有 server component 页面 |
+| `ScheduleQuery` | `ports/schedule.ts` | `db/prisma/schedule-query` | `r/schedule` + CSV 导出 |
+| `AssistantQuery` | `ports/assistant-query.ts` | `db/prisma/assistant-query` | `application/assistant-overview` |
+| `AssistantThreadRepository` | `ports/assistant-thread.ts` | `db/prisma/assistant-thread-repo` | `server/assistant-agent` |
+| `ExperimentSearchPort` | `ports/experiment-search.ts` | `db/prisma/experiment-search` | `application/search-experiments` |
+| `DirectMessageRepository` | `ports/messaging.ts` | `db/prisma/direct-message-*` | `server/dm` `server/dm-page` |
+| `NotificationRepository` | `ports/notification-repo.ts` | `db/prisma/notification-repo` | `application/send-reminders` |
+
+**加新端口的三步**：① 先在 `ports/` 写接口 ② 再在 `adapters/db/prisma/` 写实现
+③ 最后在 `application/` 或 `server/` 里接。顺序反了就会在用例里 `new PrismaClient()`。
+
+### 4.3 五条自检（第 5 条最重要）
+
+1. `domain/` 里出现 `import ... from "prisma"` / `"next"` / `fetch(` → 越界
+2. `application/` 里出现 `prisma.` → 越界
+3. `tools/` 里出现 `prisma.` → 越界
+4. `adapters/` 之外的 `prisma.` → 记进基线，只许变少（第 5.2 节）
+5. **把 `src/adapters/` 整个删掉，`domain/` + `application/` 还能用假适配器跑通单测吗？**
+   —— 能，说明分层是真的；不能，说明某处偷偷依赖了实现
+
+前 4 条由 `npm run lint:layers` 强制，第 5 条只能靠你想。
+
+## 5. 改完必须跑什么
+
+### 5.1 三件套（顺序固定）
 
 ```bash
-npx tsc --noEmit     # 类型（应该零输出）
-npm test             # Vitest 单测，纯逻辑
-npm run accept       # 数据库级验收：防超卖 / 分时段 / 禁期阶梯 / 取消结算 / 签到 / 申诉超时
+npx tsc --noEmit          # 类型零输出才算过
+npm test                  # 会先自动跑 pretest = lint:layers
+npm run accept            # 62 项数据库级验收（要 dev 库，会写真数据）
 ```
 
-`npm run accept` 会连真库、自建临时账号和实验（跑完自己清理），**但仍然是真库，别在生产库上跑**；
-种子数据被搅乱了就 `npm run db:reset`（`db push --force-reset` + 重新灌种子）。
-`npm test` 结束时若报一个临时目录 EPERM，那是环境 shim 的噪音，看 `Tests N passed` 即可。
+`npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
+想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-涉及 UI 的改动再做一次 375 宽截图自检：
+**验收判据是输出**：`543 tests passed`／`✅ check-layers: 184 个文件通过（L1–L7）`／
+`62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
-```bash
-# 1. 起一个允许一键登录的实例（仅本地）
-ENABLE_DEV_LOGIN=true node scripts/next-run.mjs start -p 3000
+### 5.2 L6 欠账是「棘轮」，不是「已清零」
 
-# 2. 写页面清单：每行 "名字 路径"，"login 手机号" 切账号
-cat > shots/pages.txt <<'EOF'
-login 13900000002
-home /
-detail /experiments/<实验id>
-login 13800000001
-r-profile /r/profile
-EOF
+`.layer-baseline.json` 记着当前 `prisma.` 出现在非适配层的 68 处位置。
+`check-layers` 只报**新增**，存量放行。所以：
 
-# 3. 截图（无头 Edge + CDP，输出里出现 OVERFLOW 就是有横向溢出）
-node scripts/shoot.mjs http://localhost:3000 shots shots/pages.txt
-```
+- 你搬走一批 → 重跑 `node scripts/check-layers.mjs --baseline` 把基线调小
+- **基线数字只许变小**。变大就会被 CI/pretest 拦下
+- 前几名：`server/appointments.ts` 14 处、`api/auth/login/route.ts` 8 处、
+  `server/scheduler.ts` 8 处
 
-导航相关的改动还要跑 `node scripts/_check-back.mjs http://127.0.0.1:3000`，
-它用真实点击断言「消息 ⇄ 对话」「详情 → 选时段 → 返回」「主试消息」三条链路不会互相弹回。
+这条设计的用意：**不是现在很干净，是不许更脏**。搬家没搬完的项目，用硬红线只能二选一
+（要么全绿作假，要么永远红），棘轮是唯一能渐进的办法。
 
----
+### 5.3 页面改了要真跑一眼
 
-## 7. 常见改动配方
+单测和 accept 都抓不到「服务端渲染值 vs 客户端轮询值错位」「`<a>` 嵌 `<a>` 导致 hydration 报错」
+这类问题。改了 UI 就 `npm run dev` 打开看一眼，或者用 `scripts/shoot.mjs` 截图。
 
-**加一个页面**
-`src/app/<路径>/page.tsx` + 首行 `await requirePage("SUBJECT")` + `<PageHeader title=... />`，
-底部 tab 根页面不加 `back`。客户端交互拆到同目录的 `*-view.tsx`（`"use client"`）。
+## 6. 出问题先看这里
 
-**加一个接口**
-`src/app/api/<路径>/route.ts`，用 `handle()` 包住，先 `requireRole()` 再 `schema.parse()`，
-最后 `return ok(data)`。schema 写在 `src/lib/domain.ts`。
-
-**加一个字段**
-`prisma/schema.prisma` → `npx prisma db push` →（如需）补 `domain.ts` 的 schema 与类型 → 页面。
-没有 migration 目录，改 schema 直接 `db push`。
-
-**改实验列表排序 / 筛选**
-只在 `src/server/experiments.ts` 的 `listExperimentCards` 与 `src/app/filter-chips.tsx` 里动。
-「主试信誉 < 60 的实验沉底 + 灰标」是产品要求，别当 bug 修掉。
-
-**改信誉规则**
-先改 `src/lib/credit.ts`，同步 `tests/credit.test.ts`，再确认 `src/server/credit.ts` 的落库口径，
-最后补 `DECISIONS.md`。
-
-**加设计决定**
-`DECISIONS.md` 末尾追加一条编号。历史上出现过编号重复（有两组 26–28、两个 32），
-追加时取**当前最大编号 +1**（现在最大是 33），不要插在中间重排。写"为什么"，不写"改了什么"。
-
----
-
-## 8. 部署
-
-**线上形态**：WorkBuddy 托管沙箱 + 分享链接（`https://psymatch.app.workbuddy.host/?sharecode=Z355S3QUOQ`）。
-沙箱只跑 `npm start`，不自动 build，所以启动链路是：
-
-```
-npm start
- ├─ scripts/prepare-db.mjs      库不存在就建表 + 灌种子；顺带把「学分」老数据换算成金额
- ├─ scripts/build-if-needed.mjs 产物不全 / 源码比 BUILD_ID 新 → prisma generate + next build
- └─ scripts/next-run.mjs start  预加载 readlink 补丁后启动
-```
-
-`build-if-needed.mjs` **按源码 mtime 判断**（`src`、`public`、`prisma/schema.prisma`、
-`package.json`、next/tailwind/postcss 配置、`tsconfig.json`），不是"产物在就跳过"——
-沙箱会复用上一次的环境，只看产物在不在会导致线上永远跑旧版本（DECISIONS 第 31 条）。
-
-**发布后必须验证线上真的换了**，不能只看部署成功：
-
-```bash
-# 挑一个包含本次改动的 chunk，和线上逐字节比对
-CH=$(grep -rl "本次新增的文案" .next/static/chunks | head -1)
-curl -s -c /tmp/ck -o /dev/null "https://psymatch.app.workbuddy.host/?sharecode=Z355S3QUOQ"
-curl -s -b /tmp/ck -o /tmp/oc.js "https://psymatch.app.workbuddy.host/_next${CH#.next}"
-cmp -s "$CH" /tmp/oc.js && echo "IDENTICAL ✓" || echo "DIFFERENT ✗"
-```
-
-**本地 curl 要加 `--noproxy '*'`**：环境里设了 `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:59778`，
-访问 localhost 会被代理转发，服务活着也返回 502。
-
-**线上是独立的 SQLite**，和本地 `prisma/dev.db` 不共享：线上注册的账号、发布的数据都在线上那份库里，
-本地种子数据不会自动上去。要带数据上线得把 `prisma/dev.db` 一起打包。
-
-**换 PostgreSQL**：`schema.prisma` 的 `provider` 改 `"postgresql"`，`DATABASE_URL` 换连接串，
-`npx prisma db push`，其余不动。多实例部署时把 `src/server/scheduler.ts` 的进程内定时器换成
-BullMQ + Redis 的 repeatable job，任务体可直接复用。
-
----
-
-## 9. 版本与发布（GitHub）
-
-仓库：<https://github.com/chentaozhng-max/minmax>（**公开**，`main` 分支）。
-版本号规则写在 [CHANGELOG.md](./CHANGELOG.md) 顶部：对外可见的更新加一个小版本
-（`v1.0` → `v1.1` → `v1.2`），结构性重做才升大版本。
-
-一次版本发布 = **四处同步**：`package.json` 的 version、`CHANGELOG.md` 新条目、`git tag`、
-GitHub 上的 Release。
-
-```bash
-# 1. 改版本号（同时更新 package-lock.json，不自动提交）
-npm version 1.1.0 --no-git-tag-version
-
-# 2. 在 CHANGELOG.md 顶部加一节 "## v1.1 — YYYY-MM-DD"
-
-# 3. 提交 + 打标签（附注标签，别用轻量标签）
-git add -A
-git commit -m "release: v1.1"
-git tag -a v1.1 -m "PsyMatch v1.1"
-git push origin main --tags
-```
-
-```bash
-# 4. 把 tag 变成 Release：正文自动取 CHANGELOG 里 `## v1.1` 那一节，已有则更新
-GH_TOKEN=ghp_xxx python scripts/release.py v1.1          # 先加 --dry-run 可只看正文
-```
-
-`scripts/release.py` 从 `git remote` 解析 owner/repo，调 GitHub API 建/改 Release，
-所以不用再开网页点。token 要 classic PAT 的 `repo` 权限；本机 `git credential` 里存的那个就够，
-可以这样取：`GH_TOKEN=$(printf "protocol=https\nhost=github.com\n\n" | git credential fill | sed -n 's/^password=//p')`。
-tag 必须**先 push 上去**，否则 API 会 422。
-
-**永远不要提交**：`.env`（密钥）、`prisma/dev.db`（数据库）、`.workbuddy/`（本机环境笔记）、
-`node_modules/`、`.next/`、`shots/`、`cloudflared.exe`。这些都在 `.gitignore` 里，
-新增敏感文件时先确认 `git status` 没有它。
-
-**这个仓库是公开的**，提交前扫一眼有没有真实手机号、内网 IP、学号、token。
-演示账号（138/139 开头）是种子数据，可以公开。
-
----
-
-## 10. 已知未做（别当成 bug 报）
-
-- 通知系统（短信 / 微信 / 站内红点），页面内状态与倒计时是有的
-- 管理员后台（`/admin` 自然 404）
-- 删除已有时段（会牵连预约与 `bookedCount`，只支持追加，见 DECISIONS 第 13 条）
-- 真实 SMTP 投递（当前 mock）
-- 学科筛选（数据模型没有该字段，DECISIONS 第 6 条）
-- 人脸实名认证（只有教育邮箱 + 学号/工号，主试叫「主试认证」，被试叫「学生认证」）
-
----
-
-## 11. 出问题时先看这里
-
-| 症状 | 大概率原因 | 处理 |
+| 症状 | 十有八九是 | 怎么修 |
 |---|---|---|
-| 全站 500，日志 `did not initialize yet` | 缺 `node_modules/.prisma/client/index.js` | 停服务 → `npx prisma generate` |
-| `P1012 Environment variable not found: DATABASE_URL` | 没有 `.env`（GitHub 下载的包 / 新 clone） | `node scripts/ensure-env.mjs` |
-| 页面样式全丢 / 布局错乱 | `.next` 是半成品 | 删 `.next` → 重新 build（可能要重试） |
-| 构建 `EPERM ... query_engine-windows.dll.node` | 服务没停 | 停 3000 端口进程再 build |
-| 构建 `ENOENT _buildManifest.js.tmp.*` | 文件系统 shim 或 E 盘抖动 | 重试 2–3 次 |
-| 登录成功又跳回登录页 | Cookie 被 `Secure` 丢掉 | 确认走的是 `isSecureRequest`，或改用 https |
-| 线上打开还是旧版 | 沙箱复用了旧 `.next` | 确认 `build-if-needed.mjs` 打了"源码比构建产物新" |
-| 本机 curl 502 但浏览器正常 | HTTP 代理 | 加 `--noproxy '*'` |
-| `npm run dev` 一启动就崩 | 用了 `npx next dev` | 换回 `npm run dev` |
-| 返回键一按就来回弹 | 有人给 `PageHeader` 传了 `Link` | 见 2.5 |
+| `next build` 报 `ENOENT _buildManifest.js.tmp.*` / `build-manifest.json 缺失` / `export/500.html` | 注入的 `fs.rmSync` shim 把 `.next` 删到构建开始之后 | 已在 `next-run.mjs` 摘掉该 `--require`。日志里出现 `safe-delete` 就是它，重试 2–3 次 |
+| `EPERM: rename ... query_engine-windows.dll.node.tmp*` | dev/start 还在跑，DLL 被占用 | 停服务再 `prisma generate`（第 2.2 节） |
+| 编译全绿但接口 500 `Cannot read properties of undefined` | `prisma generate` 没真跑，`.prisma/client` 是旧的 | 第 2.2 节那条 `typeof p.模型` 探针，`undefined` 就是没同步 |
+| 整站 500 + `@prisma/client did not initialize yet` | `node_modules/.prisma/client/index.js` 丢了 | 停服务 → `npx prisma generate` |
+| 本机 `curl` 返回 502，页面打开却是好的 | 环境里设了 `HTTP_PROXY=127.0.0.1:59778` | 一律加 `--noproxy '*'` |
+| 登录成功又跳回登录页 | Cookie 的 `Secure` 判定错 | 见第 21 条：按请求协议判，不按 `NODE_ENV` |
+| `npm start` 起来是旧内容 | 复用环境里躺着上一版 `.next` | 现由 `build-if-needed.mjs` 按源码 mtime 判定，日志会打「源码比构建产物新 Ns」 |
+| 手机在 `/onboarding` 点完成弹 `Failed to fetch` | 浏览器网络层没收到响应（不是接口报错） | `api-client` 已翻译成「网络没连上」；先 `curl --noproxy '*'` 验服务端 |
+| 卡片奖励显示「面议」 | 库里还有「1 学分」这类老数据 | `prepare-db.mjs` 启动时幂等换算成 `¥30`，重启一次即可 |
+| 部分页面白屏 + hydration 报错 | 多半是 `<a>` 里嵌了 `<a>`（整卡是 Link 又塞了按钮） | 用 `inset-0` 铺满 + 内容 `relative` + 按钮 `z-10` |
+| 助手沉默 / 只回一句 | `max_tokens` 太小被思维链挤空 | 见 ARCHITECTURE 决策 #37，或用 `deepseek-chat` |
+| 「消息 ⇄ 对话」退不出去 | 返回用了 `<Link>` 硬跳 | 见第 2.5 节 |
+| 验证「助手能不能对话」时无从下手 | 顺序错 | 入口层（有 input 吗）→ 能力层（有对应工具吗）→ 模型层（才轮到花钱测） |
+
+**判断「线上/本地跑的是不是新代码」**：grep 构建产物里的新文案，比看 BUILD_ID 时间可靠。
+
+```bash
+powershell -NoProfile -Command "Select-String -Path .next\static\chunks\*.js -Pattern '网络没连上'"
+```
+
+## 7. 加功能的配方
+
+### 7.1 加一个页面
+
+1. `src/app/<路径>/page.tsx`（server component）
+2. 数据别直接 `prisma.` 查——用 `ports/page-queries.ts` 里的端口，或新建子端口
+3. 有交互的部分拆成 `xxx-view.tsx` + `"use client"`
+4. 顶栏用 `<PageHeader>`；**底部 tab 的根页面不要挂返回箭头**（第 2.5 节）
+5. 真跑一眼（第 5.3 节）
+
+### 7.2 加一个 API
+
+1. 请求体 schema 加进 `src/domain/schemas.ts`
+2. `src/app/api/<路径>/route.ts`：鉴权 → `parse` → 调 `application/` 或 `server/`
+   → 用 `handle()` 包信封。**handler ≤ 40 行**（L5）
+3. 业务判断写进 `domain/` 纯函数，别写在 handler 里
+4. 补单测（纯函数）+ 需要的话加进 `scripts/acceptance.ts`（每节自带用户！）
+
+### 7.3 加一个 Agent 工具
+
+1. `src/tools/my-tool.ts`，用 `defineTool()`，参数写 Zod
+2. **判断放哪个注册表**：依赖「当前实验」→ 房间（`createToolRegistry`）；
+   跨实验 → 门厅（`createAssistantToolRegistry`）
+3. 工具里不碰数据库：需要数据就往 ctx 里加回调，由 `server/agent.ts` 注入
+4. 跑 parity 测试（`tests/tools-*`）——它保证模型看到的东西没被悄悄改坏
+
+### 7.4 加一个 Prisma 模型
+
+1. 改 `prisma/schema.prisma`（枚举用 String，Json 用 TEXT 存串）
+2. **停服务** → `npx prisma generate` → 第 2.2 节那条 `typeof p.模型` 验一下
+3. `npm run db:push` 或重建本地库
+4. seed 里补几条数据，否则页面全是空状态
+5. 端口 → 适配器 → 用例，三步顺序别反（第 4.2 节）
+
+### 7.5 搬一处 L6 欠账
+
+1. 在 `ports/` 加或扩端口接口
+2. `adapters/db/prisma/` 写实现
+3. 把 `server/xxx.ts` 里的 `prisma.` 换成端口调用
+4. `npm run lint:layers` → `node scripts/check-layers.mjs --baseline` 把基线调小
+5. `npm test && npm run accept` 全绿再 commit
+
+## 8. 部署与发布
+
+### 8.1 换 PostgreSQL
+
+1. `prisma/schema.prisma` 的 `provider` 改 `"postgresql"`
+2. `.env` 的 `DATABASE_URL` 换 `postgresql://user:pass@host:5432/psymatch`
+3. `npx prisma db push`（或 `migrate deploy`）→ `npm run build && npm start`
+
+字段名、索引、唯一约束、防超卖 SQL 在 PG 上语义一致。
+
+### 8.2 多实例要改的一件事
+
+`src/server/scheduler.ts` 是进程内定时器，多实例会重复执行。换 BullMQ + Redis 的
+repeatable job 时**任务体可以直接复用**（`application/send-reminders.ts` 已经是纯函数式的）。
+
+### 8.3 反代后面必须传 `x-forwarded-proto`
+
+Cookie 的 `Secure` 是按**请求协议**判的，不是 `NODE_ENV`（原 DECISIONS #21）。
+不传这个头 → 反代后用 http 打开 → 浏览器丢弃 Secure Cookie → 「登录成功又跳回登录页」。
+
+### 8.4 发版
+
+```bash
+python scripts/release.py v1.3 --dry-run   # 先看正文
+python scripts/release.py v1.3             # 需要 GH_TOKEN
+```
+
+正文从 `git log <上一个tag>..HEAD` 按约定式提交前缀自动分组。
+**README 顶部写着 `当前版本：vX.Y`，和要发的 tag 对不上会被脚本拦下**（连漏过两次）。
+tag 要先 push，否则 GitHub API 422。
+
+## 9. 附录 A：决策速查表
+
+35 条历史决策里 18 条还活着，按「你想改什么」索引。**编号是原来 DECISIONS.md 的**，
+方便你从旧 commit / 旧对话里对上。
+
+| 想改什么 | 先知道 | 原编号 |
+|---|---|---|
+| 换数据库 / 部署形态 | SQLite 只是「一条命令跑起来」的选择，代码没绑死；枚举是 String、Json 是 TEXT 存串，换 PG 这些都不动 | #1 #2 #3 #5 |
+| 换定时任务 / 多实例 | 现在是进程内定时器，任务体与调度壳解耦，换 BullMQ 只换壳 | #4 |
+| 加学科 / 筛选维度 | 数据模型没有 `field` 字段；当前筛选只有「可报名 / 今天 / 明天 / 时长 / 资格」 | #6 |
+| 改签到流程 | 是**一键签到**，没有 4 位码，防误点只靠时间窗（开始前 30min ~ 结束） | #8 |
+| 改取消规则 | 距开始不足 12h 直接拒绝取消（提示去签到），不是「可取消但扣分」 | #9 |
+| 改信誉分结算 | 到 100 时**不写** `CreditEvent`（没变动就没流水）；`noShowCount` 永远不清零 | #10 #12 |
+| 改禁期 | 只延长不缩短——已有更长禁期时保留更晚的解禁时间 | #11 |
+| 改实验编辑 | 只做「改信息 + 上下架 + 追加时段」，**不删时段**（删了 `bookedCount` 和预约会凭空消失） | #13 |
+| 改预约交互 | 候选点击即预约，直接走 `/api/appointments`，不再绕一轮 LLM；与 `book_slot` 共用 `bookSlot()` | #15 |
+| 改时段粒度 | 一律半小时对齐；批量生成的「每段分钟」= 实验时长向上取整到 30 的倍数 | #19 |
+| 改顶部栏 / 返回 | `PageHeader` 统一；返回走 `router.back()`，传路径只当兜底；tab 根页不挂返回 | #20 #32 |
+| 改登录 Cookie | `Secure` 按请求协议判（`x-forwarded-proto`），不按 `NODE_ENV` | #21 |
+| 加「消息」相关功能 | `ChatSession`=人和 AI；`DirectThread`/`DirectMessage`=人和人。同人对同一主试只有一条线程 | #23 |
+| 改主试端导航 | 5 格：实验 / 消息 / **+发布**（凸起）/ 申诉 / 我的 | #27 |
+| 改主试「我的」页 | 招募方视角，不复制被试版；第一屏是发布 CTA + 待办 | #28 |
+| 改认证流程 | 被试「学生认证」/ 主试「主试认证」，同一个 `VerifyForm` 传 `role` 换文案 | #29 |
+| 改文案口径 | 产品定位是「心理学实验的报名与排期」，不是「你说有空它来排」 | #30 |
+| 改奖励显示 | 全站只有金额，没有「学分」；一律走 `@/domain/reward` | #33 |
+
+**已作废（别再按它们改）**：主试消息 Tab 改申诉（已被 #27 覆盖）、实验详情页招聘风格试点
+（只改过一屏，未铺开）、配图水印裁切（一次性操作）、`build-if-needed` 只看产物（已改按 mtime）、
+`链接硬跳返回`（已被 #32 推翻）、以及三条 2026-10-27 的临时排查记录（修完即失效）。
+
+## 10. 附录 B：已知未做
+
+- **管理员后台**：`/admin` 自然 404
+- **真实 SMTP**：现在 mock，验证码打到控制台 + `mock-email.log`
+- **删除已有时段**：故意不做（原 #13）
+- **学科筛选**：数据模型没这个字段（原 #6）
+- **多实例调度**：`scheduler.ts` 是进程内定时器（第 8.2 节）
+- **L6 欠账 68 处**：`server/appointments.ts` 14 / `api/auth/login` 8 / `server/scheduler.ts` 8 等，
+  只许变少（第 5.2 节）
+- **应用层偏薄**：667 行 / 6 个用例，很多 server 里的业务还没往 `domain` 沉
+
+> 通知系统**已经做了**（站内红点 + 轮询 toast + 1min 扫描提醒），别按旧文档当成「明确不做」。
 
 ---
 
-**改动流程建议**：读 `DECISIONS.md` 相关编号 → 改代码 → `tsc` + `npm test` (+ `npm run accept`)
-→ 涉及 UI 截图自检 → 补 `DECISIONS.md` → 部署 → 线上逐字节核对。
+_这一页是给「下一个接手的人」的。它不是历史记录，是操作手册——改这里时想的是「他明天会不会踩到」，
+不是「我们昨天做了什么」。_

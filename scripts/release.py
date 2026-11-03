@@ -1,5 +1,5 @@
 """
-用 GitHub API 建 / 更新一条 Release，正文自动从 CHANGELOG.md 里对应版本的段落取。
+用 GitHub API 建 / 更新一条 Release，正文自动从 git 历史里生成。
 
 用法（token 要有 classic PAT 的 repo 权限）：
 
@@ -23,27 +23,74 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def git(*args: str) -> str:
+    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+
+
 def repo_slug() -> tuple[str, str]:
     """从 origin 的 URL 里解析 owner/repo，https 和 ssh 两种写法都认。"""
-    url = subprocess.check_output(
-        ["git", "remote", "get-url", "origin"], cwd=ROOT, text=True
-    ).strip()
+    url = git("remote", "get-url", "origin")
     m = re.search(r"github\.com[:/]([^/]+)/([^/.]+?)(?:\.git)?$", url)
     if not m:
         sys.exit(f"无法从 origin 解析 owner/repo：{url}")
     return m.group(1), m.group(2)
 
 
-def changelog_section(tag: str) -> str | None:
-    """取 `## v1.1 — ...` 到下一个 `## v` 之间的正文。"""
-    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    m = re.search(rf"^## {re.escape(tag)}\b.*$", text, re.M)
-    if not m:
+def last_tag(tag: str) -> str | None:
+    """上一个 tag（版本序，不是时间序）。没有就返回 None。"""
+    try:
+        tags = git("tag", "--sort=-v:refname").splitlines()
+    except subprocess.CalledProcessError:
         return None
-    rest = text[m.end():]
-    nxt = re.search(r"^## v", rest, re.M)
-    body = rest[: nxt.start()] if nxt else rest
-    return re.sub(r"\n-{3,}\s*$", "", body).strip()
+    # 当前 tag 自己可能已经打在 HEAD 上，要跳过它去找更早的那个
+    older = [t for t in tags if t != tag]
+    return older[0] if older else None
+
+
+def commit_log(tag: str) -> str | None:
+    """从上一个 tag 到 HEAD 的提交，按前缀分组排成 Release 正文。
+
+    仓库不再维护 CHANGELOG.md —— 49 条 commit 本身就是更好的记录。
+    约定式提交前缀（feat/fix/refactor/docs/chore/test）直接当分类标题用。
+    """
+    base = last_tag(tag)
+    span = f"{base}..HEAD" if base else "HEAD"
+    try:
+        raw = subprocess.check_output(
+            ["git", "log", "--pretty=format:%s%n%b%n---", span], cwd=ROOT, text=True
+        )
+    except subprocess.CalledProcessError as exc:
+        sys.exit(f"git log 失败：{exc}")
+
+    groups: dict[str, list[str]] = {}
+    for block in raw.split("\n---"):
+        lines = [ln.rstrip() for ln in block.strip().splitlines() if ln.strip()]
+        if not lines:
+            continue
+        subject = lines[0]
+        m = re.match(r"^(\w+)(?:\(([^)]+)\))?!?:\s*(.+)$", subject)
+        if m:
+            kind, scope, text = m.group(1), m.group(2), m.group(3)
+        else:
+            kind, scope, text = "其他", None, subject
+        label = {
+            "feat": "新功能", "fix": "修复", "refactor": "重构",
+            "perf": "性能", "docs": "文档", "test": "测试", "chore": "杂项",
+        }.get(kind, "其他")
+        item = f"- **{scope}**：{text}" if scope else f"- {text}"
+        groups.setdefault(label, []).append(item)
+
+    if not groups:
+        return None
+
+    order = ["新功能", "修复", "重构", "性能", "测试", "文档", "杂项", "其他"]
+    parts = []
+    for label in order:
+        items = groups.get(label)
+        if items:
+            parts.append(f"### {label}\n" + "\n".join(items))
+    header = f"对比 {base}...{tag}" if base else f"首个版本 {tag}"
+    return f"{header}\n\n" + "\n\n".join(parts)
 
 
 def readme_version() -> str | None:
@@ -98,9 +145,9 @@ def main() -> None:
         else:
             sys.exit(f"{message}\n先把 README 顶部改成 {args.tag}，或加 --force 跳过检查。")
 
-    body = changelog_section(args.tag)
+    body = commit_log(args.tag)
     if not body:
-        sys.exit(f"CHANGELOG.md 里找不到 `## {args.tag}` 开头的段落")
+        sys.exit(f"{args.tag} 之前没有任何提交，生成不出 Release 正文")
     name = args.name or f"PsyMatch {args.tag}"
 
     if args.dry_run:

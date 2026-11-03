@@ -8,11 +8,11 @@ import { TabBar } from "@/components/tab-bar";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { StatusPill } from "@/components/ui/badge";
-import { SlotBatchGenerator, type SlotDraft } from "@/components/slot-batch-generator";
+import { SlotTimetable, toTimetableSlots, type TimetableSlot } from "@/components/slot-timetable";
 import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
 import { experimentStatusLabel, type ExperimentStatus } from "@/lib/domain";
-import { formatDateTimeInput, formatDayCN, formatHM } from "@/lib/time";
+import { formatDateTimeInput, todayInShanghai } from "@/lib/time";
 import { rewardYuan, toRewardText } from "@/lib/reward";
 
 type Detail = {
@@ -60,6 +60,8 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
   const [minCreditScore, setMinCreditScore] = useState("0");
   const [needsVerification, setNeedsVerification] = useState(true);
   const [deadline, setDeadline] = useState("");
+  /** 追加时段的暂存区：点格子只改这里，按「追加」才落库 */
+  const [pendingSlots, setPendingSlots] = useState<TimetableSlot[]>([]);
 
   useEffect(() => {
     if (!data) return;
@@ -90,10 +92,14 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
   });
 
   const addSlots = useMutation({
-    mutationFn: (slots: SlotDraft[]) =>
-      postJson<{ created: number }>(`/api/experiments/${experimentId}/slots/batch`, slots),
+    mutationFn: (slots: TimetableSlot[]) =>
+      postJson<{ created: number }>(
+        `/api/experiments/${experimentId}/slots/batch`,
+        slots.map((s) => ({ startAt: s.startAt, endAt: s.endAt, capacity: s.capacity })),
+      ),
     onSuccess: async (res) => {
-      toast(`已追加 ${res.created} 个时段`);
+      toast(res.created > 0 ? `已追加 ${res.created} 个时段` : "这些时段已经有了");
+      setPendingSlots([]);
       await queryClient.invalidateQueries({ queryKey: ["r-experiment", experimentId] });
     },
     onError: (err: Error) => toast(err.message, "error"),
@@ -228,46 +234,43 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
 
         <section>
           <div className="mb-2 flex items-baseline justify-between">
-            <h3 className="section-title">时段</h3>
+            <h3 className="section-title">已有时段</h3>
             <span className="text-[11px] text-ink-soft">
-              已订的时段不能删，避免被试预约凭空消失
+              已订的不能删，避免被试预约凭空消失
             </span>
           </div>
-          <div className="space-y-1.5">
-            {data.slots.length === 0 ? (
-              <p className="rounded-card border border-dashed border-line bg-surface/60 px-4 py-6 text-center text-[12px] text-ink-soft">
-                还没有时段
-              </p>
-            ) : (
-              data.slots.map((slot) => (
-                <div
-                  key={slot.id}
-                  className="flex items-center justify-between rounded-[8px] border border-line bg-surface px-3 py-2"
-                >
-                  <span className="num text-[12px] text-ink">
-                    {formatDayCN(new Date(slot.startAt))} {formatHM(new Date(slot.startAt))}–
-                    {formatHM(new Date(slot.endAt))}
-                  </span>
-                  <span
-                    className={`num text-[11px] ${
-                      slot.remaining === 0 ? "text-danger" : "text-ink-soft"
-                    }`}
-                  >
-                    {slot.bookedCount}/{slot.capacity}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-          <div className="mt-2">
-            <SlotBatchGenerator
-              defaultSegment={Number(durationMin) || 30}
-              onGenerate={(slots) => addSlots.mutate(slots)}
-            />
-            {addSlots.isPending ? (
-              <p className="mt-1.5 text-center text-[11px] text-ink-soft">正在写入时段…</p>
-            ) : null}
-          </div>
+          <SlotTimetable
+            slots={toTimetableSlots(data.slots)}
+            durationMin={Number(durationMin) || 30}
+            capacity={data.slots[0]?.capacity ?? 1}
+            today={todayInShanghai()}
+            showBooked
+          />
+        </section>
+
+        <section>
+          <h3 className="section-title mb-1.5">追加时段</h3>
+          <p className="mb-2 text-[11px] leading-4 text-ink-soft">
+            点格子选要新开的时段，点「追加」才写入；已有时段不会被覆盖。
+          </p>
+          <SlotTimetable
+            slots={pendingSlots}
+            durationMin={Number(durationMin) || 30}
+            capacity={data.slots[0]?.capacity ?? 1}
+            today={todayInShanghai()}
+            onChange={setPendingSlots}
+          />
+          {pendingSlots.length > 0 ? (
+            <Button
+              size="md"
+              block
+              className="mt-2"
+              loading={addSlots.isPending}
+              onClick={() => addSlots.mutate(pendingSlots)}
+            >
+              追加 {pendingSlots.length} 个时段
+            </Button>
+          ) : null}
         </section>
 
         <section className="pb-4">

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { makePageQuery } from "@/adapters/db/prisma/page-query";
 import { requirePage } from "@/lib/page-auth";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
@@ -22,12 +23,12 @@ const STATE_LABEL: Record<string, string> = {
 
 export default async function MessagesPage() {
   const session = await requirePage("SUBJECT");
-  const sessions = await prisma.chatSession.findMany({
-    where: { subjectId: session.sub },
-    include: { experiment: { include: { researcher: true } } },
-    orderBy: { updatedAt: "desc" },
-  });
-  const threads = await listThreads(session.sub, "SUBJECT");
+  const pageQuery = makePageQuery(prisma);
+
+  const [sessions, threads] = await Promise.all([
+    pageQuery.findChatSessionsForSubject(session.sub),
+    listThreads(session.sub, "SUBJECT"),
+  ]);
 
   return (
     <main className="shell tabbar-space">
@@ -69,7 +70,7 @@ export default async function MessagesPage() {
                   className="flex gap-3 px-3.5 py-3 active:bg-mist"
                 >
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-moss-tint text-[13px] font-semibold text-moss">
-                    {s.experiment.researcher.name.slice(0, 1)}
+                    {s.experiment.researcherName.slice(0, 1)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">

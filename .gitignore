@@ -20,6 +20,9 @@ shots/
 # 本机环境笔记 / 工作区数据，不进公开仓库
 .workbuddy/
 
+# 临时草稿（commit message 草稿等）
+tmp/
+
 # 一次性排障脚本（可复用的回归脚本用 _check-*.mjs，照常入库）
 scripts/_debug-*.mjs
 

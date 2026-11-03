@@ -1,98 +1,32 @@
 /**
- * 最小可用的 OpenAI 兼容客户端（DeepSeek 等），只实现我们需要的 chat + tool calling。
- * 不引入 SDK：一个 fetch 就够，也方便在无 key 时干净地降级。
+ * 兼容转发层。
+ *
+ * 真正的实现已搬到 `@/adapters/llm/`（依赖倒置：适配器实现 `@/domain/ports/llm` 的 LlmPort）。
+ * 这个文件保留原来的函数签名与导出名，让所有旧调用方（agent.ts 等）一行都不用改。
+ *
+ * 等 Phase 2 把 agent.ts 改成直接依赖端口的注册表后，本文件可以删掉。
+ * 在此之前它保证「随时能回退」——想回到旧行为，只需要恢复本文件的历史版本。
  */
+import { getLlm } from "@/adapters/llm";
+import type { LlmMessage, LlmReply, LlmToolSpec } from "@/domain/ports/llm";
 
-export type LlmToolCall = {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-};
+export type { LlmMessage, LlmReply, LlmToolSpec, LlmToolCall, LlmRawToolCall } from "@/domain/ports/llm";
 
-export type LlmMessage =
-  | { role: "system" | "user"; content: string }
-  | { role: "assistant"; content: string | null; tool_calls?: LlmRawToolCall[] }
-  | { role: "tool"; tool_call_id: string; content: string };
-
-type LlmRawToolCall = {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
-};
-
-export type LlmToolSpec = {
-  type: "function";
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-};
-
-export type LlmReply = { content: string; toolCalls: LlmToolCall[] };
-
-export function llmConfigured() {
-  return Boolean(process.env.LLM_API_KEY && process.env.LLM_API_KEY.trim().length > 8);
-}
-
-const DEFAULT_TIMEOUT_MS = 25_000;
-
-export async function chatWithTools(params: {
+export type LlmChatParams = {
   messages: LlmMessage[];
   tools: LlmToolSpec[];
   temperature?: number;
-}): Promise<LlmReply> {
-  const baseUrl = (process.env.LLM_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "");
-  const apiKey = process.env.LLM_API_KEY || "";
-  const model = process.env.LLM_MODEL || "deepseek-chat";
-  if (!llmConfigured()) throw new Error("LLM 未配置");
+};
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: params.messages,
-        tools: params.tools,
-        tool_choice: "auto",
-        temperature: params.temperature ?? 0.3,
-        max_tokens: 800,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`LLM ${res.status}: ${text.slice(0, 300)}`);
-    }
-
-    const json = (await res.json()) as {
-      choices?: {
-        message?: { content?: string | null; tool_calls?: LlmRawToolCall[] };
-      }[];
-    };
-    const message = json.choices?.[0]?.message;
-    if (!message) throw new Error("LLM 返回为空");
-
-    const toolCalls: LlmToolCall[] = (message.tool_calls ?? []).map((tc) => {
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(tc.function.arguments || "{}") as Record<string, unknown>;
-      } catch {
-        args = {};
-      }
-      return { id: tc.id, name: tc.function.name, args };
-    });
-
-    return { content: (message.content ?? "").trim(), toolCalls };
-  } finally {
-    clearTimeout(timer);
-  }
+/** 是否已配置可用的模型（每次调用重新判断，不缓存） */
+export function llmConfigured(): boolean {
+  return getLlm().configured();
 }
+
+/** 发起一次带工具的对话 */
+export function chatWithTools(params: LlmChatParams): Promise<LlmReply> {
+  return getLlm().chat(params);
+}
+
+/** 供需要拿到端口本体的新代码使用 */
+export { getLlm };

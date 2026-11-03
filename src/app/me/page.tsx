@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { makePageQuery } from "@/adapters/db/prisma/page-query";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -10,36 +11,34 @@ import { Button } from "@/components/ui/button";
 import { creditReasonLabel, type CreditReason } from "@/lib/domain";
 import { formatDateTimeCN } from "@/lib/time";
 import { LogoutButton } from "@/components/logout-button";
+import { makeDefaultNotificationRepository } from "@/adapters/db/prisma/notification-repo";
+import { ReminderEntry } from "./reminder-entry";
 
 export default async function MePage() {
   const session = await requirePage("SUBJECT");
-  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  const pageQuery = makePageQuery(prisma);
+
+  // 这四件事都只依赖 session.sub（会话里已经带了用户 id），彼此没有先后关系，
+  // 一次并发发出去。原来是「查资料 → 查统计 → 查未读」三段 await，
+  // 云端每段都是一次往返，叠起来就是点进「我的」要等的那一下。
+  const [user, events, counts, unread] = await Promise.all([
+    pageQuery.findMeProfile(session.sub),
+    pageQuery.findRecentCreditEvents(session.sub, 20),
+    pageQuery.countAppointmentsByStatus(
+      session.sub,
+      ["COMPLETED"],
+      ["PENDING_SUBJECT_CONFIRM", "AWAITING_RESEARCHER", "CONFIRMED", "CHECKED_IN"],
+    ),
+    // 「我的」页要显示提醒入口的未读数，只查一个 count，不拉列表
+    makeDefaultNotificationRepository().countUnread(session.sub),
+  ]);
   if (!user) return null;
+
+  const completed = counts.completed;
+  const ongoing = counts.ongoing;
 
   const now = new Date();
   const banned = user.bannedUntil && user.bannedUntil.getTime() > now.getTime();
-  const events = await prisma.creditEvent.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-  });
-  const stats = await prisma.appointment.groupBy({
-    by: ["status"],
-    where: { subjectId: user.id },
-    _count: { _all: true },
-  });
-  const countByStatus = (statuses: string[]) =>
-    statuses.reduce(
-      (sum, status) => sum + (stats.find((s) => s.status === status)?._count._all ?? 0),
-      0,
-    );
-  const completed = countByStatus(["COMPLETED"]);
-  const ongoing = countByStatus([
-    "PENDING_SUBJECT_CONFIRM",
-    "AWAITING_RESEARCHER",
-    "CONFIRMED",
-    "CHECKED_IN",
-  ]);
 
   return (
     <main className="shell tabbar-space">
@@ -114,8 +113,7 @@ export default async function MePage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] text-ink">
-                      {creditReasonLabel[event.reason as CreditReason] ?? event.reason}
-                    </p>
+                      {creditReasonLabel[event.reason as CreditReason] ?? event.reason}                    </p>
                     <p className="truncate text-[11px] text-ink-soft">
                       {event.note ?? "—"} · {formatDateTimeCN(event.createdAt)}
                     </p>
@@ -128,6 +126,7 @@ export default async function MePage() {
         </section>
 
         <div className="mt-5 space-y-2">
+          <ReminderEntry serverUnread={unread} />
           <Link href="/appointments" className="block">
             <Button variant="outline" size="lg" block>
               我的预约

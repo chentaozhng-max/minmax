@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/http";
-import { checkEligibility, CREDIT, isFreeSubjectCancel, shouldPenalizeResearcherCancel } from "@/lib/credit";
+import { CREDIT, isFreeSubjectCancel, shouldPenalizeResearcherCancel } from "@/lib/credit";
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   AppointmentStatus,
@@ -9,105 +9,32 @@ import {
   type AppointmentStatus as Status,
 } from "@/lib/domain";
 import { penalizeTx, rewardAttendanceTx } from "@/server/credit";
-
-type BookInput = {
-  userId: string;
-  slotId: string;
-  now?: Date;
-  /** AGENT | FORM | DIRECT，仅用于记录来源 */
-  source?: string;
-};
+import { bookSlot as bookSlotUseCase, type BookInput } from "@/application/book-slot";
+import { makeBundle, makeUnitOfWork } from "@/adapters/db/prisma/unit-of-work";
 
 /**
  * 报名 / 锁定时段。
- * 防超卖核心：先在同一事务内用条件 UPDATE 抢占名额，影响行数为 0 直接失败。
+ *
+ * Phase 4 起真正的实现在 `application/book-slot.ts`，这里只负责组装依赖：
+ *   - 读仓储：绑定 prisma（读不需要事务）
+ *   - 写仓储：UnitOfWork（事务内绑 tx）
+ *   - 被试资格：这里查一次 user 表
+ *
+ * 防超卖逻辑已搬到 `adapters/db/prisma/slot-repo.ts` 的 `tryOccupy`，SQL 一字未改。
  */
 export async function bookSlot(input: BookInput) {
-  const now = input.now ?? new Date();
-  const slot = await prisma.slot.findUnique({
-    where: { id: input.slotId },
-    include: { experiment: { include: { researcher: true } } },
-  });
-  if (!slot) throw new ApiError(404, "时段不存在");
+  const uow = makeUnitOfWork();
 
-  const experiment = slot.experiment;
-  if (experiment.status !== ExperimentStatus.PUBLISHED) throw new ApiError(400, "该实验当前不接受报名");
-  if (experiment.signupDeadline.getTime() <= now.getTime()) throw new ApiError(400, "报名已截止");
-  if (slot.startAt.getTime() <= now.getTime()) throw new ApiError(400, "该时段已开始，无法预约");
-  if (experiment.researcherId === input.userId) throw new ApiError(400, "不能报名自己发布的实验");
-
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: input.userId } });
-
-  // 门槛前置校验（服务端硬校验，前端置灰只是提示）
-  const eligibility = checkEligibility(
-    {
-      bannedUntil: user.bannedUntil,
-      creditScore: user.creditScore,
-      studentVerified: user.studentVerified,
-      minCreditScore: experiment.minCreditScore,
-      needsVerification: experiment.needsVerification,
-    },
-    now,
-  );
-  if (!eligibility.ok) throw new ApiError(403, eligibility.message);
-
-  // 与被试已有预约的时间冲突
-  const conflicts = await prisma.appointment.findMany({
-    where: {
-      subjectId: input.userId,
-      status: { in: ACTIVE_APPOINTMENT_STATUSES },
-      slotId: { not: slot.id },
-      slot: { startAt: { lt: slot.endAt }, endAt: { gt: slot.startAt } },
-    },
-    include: { slot: { include: { experiment: true } } },
-  });
-  if (conflicts.length > 0) {
-    throw new ApiError(409, `该时间段与你已预约的「${conflicts[0].slot.experiment.title}」冲突`);
-  }
-
-  const existing = await prisma.appointment.findUnique({
-    where: { slotId_subjectId: { slotId: slot.id, subjectId: input.userId } },
-  });
-  if (existing && ACTIVE_APPOINTMENT_STATUSES.includes(existing.status as Status)) {
-    throw new ApiError(409, "你已经预约了这个时段");
-  }
-
-  return prisma.$transaction(async (tx) => {
-    const affected = await tx.$executeRaw`
-      UPDATE "Slot"
-      SET "bookedCount" = "bookedCount" + 1
-      WHERE "id" = ${slot.id} AND "bookedCount" < "capacity"
-    `;
-    if (affected === 0) {
-      throw new ApiError(409, "这个时段刚刚被约满了，换一个吧");
-    }
-
-    if (existing) {
-      return tx.appointment.update({
-        where: { id: existing.id },
-        data: {
-          status: AppointmentStatus.PENDING_SUBJECT_CONFIRM,
-          createdAt: now,
-          confirmedAt: null,
-          checkedInAt: null,
-          noShowAt: null,
-          appealStatus: null,
-          appealAt: null,
-          appealResolvedAt: null,
-          remindedAt: null,
-        },
+  return bookSlotUseCase(input, {
+    readers: uow,
+    uow,
+    async loadSubject(id: string) {
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { id },
+        select: { id: true, bannedUntil: true, creditScore: true, studentVerified: true },
       });
-    }
-
-    return tx.appointment.create({
-      data: {
-        experimentId: experiment.id,
-        slotId: slot.id,
-        subjectId: input.userId,
-        status: AppointmentStatus.PENDING_SUBJECT_CONFIRM,
-        createdAt: now,
-      },
-    });
+      return user;
+    },
   });
 }
 
@@ -228,9 +155,7 @@ export async function markNoShow(id: string, researcherId: string, now = new Dat
       data: { status: AppointmentStatus.NO_SHOW, noShowAt: now },
     });
     // 名额要放出来：之前标记未到不碰 Slot，那一格永远显示已约满。
-    await tx.$executeRaw`
-      UPDATE "Slot" SET "bookedCount" = MAX("bookedCount" - 1, 0) WHERE "id" = ${appointment.slotId}
-    `;
+    await makeBundle(tx as never).slots.release(appointment.slotId);
     await penalizeTx(tx, {
       userId: appointment.subjectId,
       reason: "NO_SHOW",
@@ -259,9 +184,7 @@ export async function cancelBySubject(id: string, userId: string, now = new Date
       where: { id },
       data: { status: AppointmentStatus.CANCELLED_BY_SUBJECT },
     });
-    await tx.$executeRaw`
-      UPDATE "Slot" SET "bookedCount" = MAX("bookedCount" - 1, 0) WHERE "id" = ${appointment.slotId}
-    `;
+    await makeBundle(tx as never).slots.release(appointment.slotId);
     return updated;
   });
 }
@@ -289,9 +212,7 @@ export async function releaseByResearcher(id: string, researcherId: string) {
       where: { id },
       data: { status: AppointmentStatus.CANCELLED_BY_RESEARCHER },
     });
-    await tx.$executeRaw`
-      UPDATE "Slot" SET "bookedCount" = MAX("bookedCount" - 1, 0) WHERE "id" = ${appointment.slotId}
-    `;
+    await makeBundle(tx as never).slots.release(appointment.slotId);
     return updated;
   });
 }

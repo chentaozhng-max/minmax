@@ -1,26 +1,57 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronRight, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
-import { SlotBatchGenerator, type SlotDraft } from "@/components/slot-batch-generator";
+import { SlotTimetable, toTimetableSlots, type TimetableSlot } from "@/components/slot-timetable";
+import { PublishBlocked } from "@/components/publish-blocked";
 import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
-import {
-  addDaysToDateStr,
-  formatDateTimeCN,
-  formatDateTimeInput,
-  formatDayCN,
-  formatHM,
-  todayInShanghai,
-} from "@/lib/time";
+import { addDaysToDateStr, formatDateTimeCN, formatDateTimeInput, formatDayCN, formatHM } from "@/lib/time";
 import { cn } from "@/lib/cn";
 import { rewardLabel, toRewardText } from "@/lib/reward";
+import { clearPublishDraft, readPublishDraft } from "@/lib/publish-draft-storage";
+import {
+  DRAFT_FIELD_LABEL,
+  isPlaceholderLocation,
+  prunePastSlots,
+  reviewExperimentDraft,
+  suggestSignupDeadline,
+  type DraftIssue,
+} from "@/domain/experiment-draft";
 
-export function NewExperimentForm() {
+/**
+ * 发布实验。
+ *
+ * 三处改动都围绕同一件事：**别让主试填到最后一步才知道发不出去**。
+ *   1. 禁期在进页面时就拦（PublishBlocked），不是等到点发布
+ *   2. 时段用课程表点，截止时间冲突当场提示并能一键修正
+ *   3. 第 3 步先跑一遍领域层的体检，有 blocking 就禁用发布按钮
+ *
+ * 判定本身全部来自 `@/domain/experiment-draft` 与 `@/domain/experiment-rules`，
+ * 页面只负责把结果画出来 —— 同一套规则也用在服务端和发布助手上。
+ */
+export function NewExperimentForm({
+  today,
+  nowIso,
+  bannedUntil,
+}: {
+  today: string;
+  nowIso: string;
+  bannedUntil: string | null;
+}) {
+  const banned = bannedUntil ? new Date(bannedUntil) : null;
+  if (banned && banned.getTime() > new Date(nowIso).getTime()) {
+    return <PublishBlocked bannedUntil={banned} now={new Date(nowIso)} />;
+  }
+  return <NewExperimentFormInner today={today} nowIso={nowIso} />;
+}
+
+function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: string }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -36,14 +67,83 @@ export function NewExperimentForm() {
   const [minCreditScore, setMinCreditScore] = useState("0");
   const [needsVerification, setNeedsVerification] = useState(true);
   // 默认报名截止设在明天中午：比默认的第一批时段（明天 14:00 起）更早，默认路径不会卡在校验上
-  const [deadline, setDeadline] = useState(`${addDaysToDateStr(todayInShanghai(), 1)}T12:00`);
+  const [deadline, setDeadline] = useState(`${addDaysToDateStr(today, 1)}T12:00`);
 
-  const [slots, setSlots] = useState<SlotDraft[]>([]);
+  const [slots, setSlots] = useState<TimetableSlot[]>([]);
+
+  // 发布助手写完 → 跳到这里。只读一次，读完就删，避免下次莫名回填
+  useEffect(() => {
+    const draft = readPublishDraft();
+    if (!draft) return;
+    clearPublishDraft();
+
+    setTitle(draft.title);
+    setDescription(draft.description);
+    setLocation(draft.location);
+    setDurationMin(String(draft.durationMin));
+    setRewardYuan(String(draft.rewardYuan));
+    setType(draft.type === "GROUP" ? "GROUP" : "INDIVIDUAL");
+    if (draft.groupSize) setGroupSize(String(draft.groupSize));
+    setRequirements(draft.requirements);
+    setMinCreditScore(String(draft.minCreditScore));
+    setNeedsVerification(draft.needsVerification);
+
+    // 草稿可能是几小时前写的：里面的过去时段直接丢掉，否则截止时间怎么改都不合法
+    const now = new Date(nowIso);
+    const fresh = prunePastSlots(draft.slots, now);
+    setSlots(toTimetableSlots(fresh));
+
+    const suggestion = suggestSignupDeadline(fresh, now);
+    if (suggestion) setDeadline(formatDateTimeInput(suggestion));
+
+    if (draft.slots.length > 0 && fresh.length === 0) {
+      toast("助手写的时段都已经开始了，请在课程表里重新排", "error");
+    } else {
+      toast(
+        fresh.length < draft.slots.length
+          ? `已填入草稿，并去掉了 ${draft.slots.length - fresh.length} 个已开始的时段`
+          : "已填入发布助手写的草稿，请逐项核对",
+      );
+    }
+  }, [nowIso]);
+
+  const capacity = type === "GROUP" ? Math.max(2, Number(groupSize) || 2) : 1;
+
+  /** 容量是派生值：切类型 / 改团体人数时，已点的时段要跟着变，否则名额对不上 */
+  function applyCapacity(size: number) {
+    setSlots((prev) => prev.map((s) => ({ ...s, capacity: size })));
+  }
+
+  const nowMs = new Date(nowIso).getTime();
+  /** 最早一个还没开始的时段 —— 已经开始的不能当截止时间的上界 */
+  const firstUpcoming = useMemo(() => {
+    let min: number | null = null;
+    for (const slot of slots) {
+      const t = new Date(slot.startAt).getTime();
+      if (!Number.isFinite(t) || t <= nowMs) continue;
+      if (min === null || t < min) min = t;
+    }
+    return min;
+  }, [slots, nowMs]);
+
+  const deadlineMs = new Date(`${deadline}:00+08:00`).getTime();
+  /** 截止时间没填 / 已过去 / 晚于最早时段 —— 三种都发不出去，统一在这一处喊 */
+  const deadlineConflict =
+    Number.isNaN(deadlineMs) || deadlineMs <= nowMs || (firstUpcoming !== null && deadlineMs >= firstUpcoming);
+
+  const suggestedDeadline = useMemo(
+    () => suggestSignupDeadline(slots, new Date(nowIso)),
+    [slots, nowIso],
+  );
+
+  const suggestedDeadlineText = suggestedDeadline ? formatDateTimeCN(suggestedDeadline) : null;
 
   const grouped = useMemo(() => {
-    const map = new Map<string, SlotDraft[]>();
+    const map = new Map<string, TimetableSlot[]>();
     for (const slot of slots) {
-      const key = new Date(slot.startAt).toISOString().slice(0, 10);
+      const key = new Date(new Date(slot.startAt).getTime() + 8 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
       const list = map.get(key) ?? [];
       list.push(slot);
       map.set(key, list);
@@ -51,27 +151,42 @@ export function NewExperimentForm() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [slots]);
 
-  function mergeSlots(generated: SlotDraft[]) {
-    setSlots((prev) => {
-      const keys = new Set(prev.map((s) => s.startAt));
-      const merged = [...prev];
-      for (const slot of generated) if (!keys.has(slot.startAt)) merged.push(slot);
-      return merged.sort((a, b) => a.startAt.localeCompare(b.startAt));
-    });
+  const formDraft = useMemo(
+    () => ({
+      title: title.trim(),
+      description: description.trim(),
+      location: location.trim(),
+      durationMin: Number(durationMin) || 0,
+      rewardYuan: Number(rewardYuan) || 0,
+      type: type === "GROUP" ? ("GROUP" as const) : ("INDIVIDUAL" as const),
+      groupSize: type === "GROUP" ? Number(groupSize) || 0 : null,
+      requirements: requirements.trim(),
+      minCreditScore: Number(minCreditScore) || 0,
+      needsVerification,
+      slots,
+      slotPlan: null,
+    }),
+    [title, description, location, durationMin, rewardYuan, type, groupSize, requirements, minCreditScore, needsVerification, slots],
+  );
 
-    // 报名截止必须早于最早时段。生成时段后如果冲突，直接把截止时间调到最早时段前 2 小时，
-    // 否则用户会在第 2 步被卡住却不知道要改哪个字段。
-    const earliest = Math.min(...generated.map((s) => new Date(s.startAt).getTime()));
-    if (new Date(`${deadline}:00+08:00`).getTime() >= earliest) {
-      const adjusted = new Date(earliest - 2 * 3600 * 1000);
-      setDeadline(formatDateTimeInput(adjusted));
-      toast(
-        `已生成 ${generated.length} 个时段；报名截止自动改为 ${formatDateTimeCN(adjusted)}`,
-      );
-      return;
+  // 第 3 步的体检：和发布接口、发布助手用的是同一份规则
+  const issues = useMemo(
+    () =>
+      reviewExperimentDraft(formDraft, {
+        now: new Date(nowIso),
+        // 截止时间只有手填表单知道，助手草稿不带，所以单独传
+        signupDeadline: new Date(deadlineMs),
+      }),
+    [formDraft, nowIso, deadlineMs],
+  );
+  const blocking = issues.filter((i) => i.level === "block");
+
+  function fixDeadline() {
+    if (!suggestedDeadline) {
+      return toast("时段都开始过了，先把最早的一段往后挪", "error");
     }
-
-    toast(`已生成 ${generated.length} 个时段`);
+    setDeadline(formatDateTimeInput(suggestedDeadline));
+    toast(`报名截止已改到 ${formatDateTimeCN(suggestedDeadline)}`);
   }
 
   function next() {
@@ -80,20 +195,31 @@ export function NewExperimentForm() {
       if (description.trim().length < 10) return toast("描述至少 10 个字", "error");
       if (!location.trim()) return toast("填一下实验地点", "error");
       if (!toRewardText(rewardYuan)) return toast("填一下奖励金额（元）", "error");
+      if (Number(durationMin) < 5) return toast("时长至少 5 分钟", "error");
       if (Number(minCreditScore) < 0 || Number(minCreditScore) > 100)
         return toast("信誉门槛要在 0–100 之间", "error");
       if (type === "GROUP" && Number(groupSize) < 2) return toast("团体实验人数至少 2", "error");
     }
     if (step === 2) {
-      if (slots.length === 0) return toast("至少加一个时段", "error");
-      const earliest = Math.min(...slots.map((s) => new Date(s.startAt).getTime()));
-      if (new Date(`${deadline}:00+08:00`).getTime() >= earliest)
-        return toast("报名截止时间必须早于最早时段", "error");
+      if (slots.length === 0) return toast("在课程表里点几个时段", "error");
+      // 排时段的过程中可能跨过了某个时段的开始时间：进确认页前清掉，
+      // 否则名额算多了，发布时服务端也会把这些时段丢掉
+      const fresh = prunePastSlots(slots, new Date());
+      if (fresh.length !== slots.length) {
+        setSlots(fresh);
+        toast(`去掉了 ${slots.length - fresh.length} 个已开始的时段`);
+      }
+      if (fresh.length === 0) return toast("时段都开始了，重新点几个", "error");
+      // 截止时间冲突不拦在这里：放到第 3 步的体检里给「一键修正」，
+      // 否则用户被一句 toast 顶回去，还得自己回头找那一项在哪
     }
     setStep((s) => Math.min(3, s + 1));
   }
 
   async function submit(publish: boolean) {
+    if (blocking.length > 0) {
+      return toast(`还有 ${blocking.length} 项要补：${blocking[0].message}`, "error");
+    }
     setSubmitting(true);
     try {
       const data = await postJson<{ id: string }>("/api/experiments", {
@@ -108,7 +234,7 @@ export function NewExperimentForm() {
         minCreditScore: Number(minCreditScore),
         needsVerification,
         signupDeadline: new Date(`${deadline}:00+08:00`).toISOString(),
-        slots,
+        slots: slots.map((s) => ({ startAt: s.startAt, endAt: s.endAt, capacity: s.capacity })),
         publish,
       });
       toast(publish ? "实验已发布" : "已保存为草稿");
@@ -141,10 +267,7 @@ export function NewExperimentForm() {
                 {index}
               </span>
               <span
-                className={cn(
-                  "text-[12px]",
-                  active ? "font-medium text-ink" : "text-ink-soft",
-                )}
+                className={cn("text-[12px]", active ? "font-medium text-ink" : "text-ink-soft")}
               >
                 {label}
               </span>
@@ -157,6 +280,20 @@ export function NewExperimentForm() {
       <div className="px-4 pt-4">
         {step === 1 ? (
           <div className="space-y-3">
+            <Link
+              href="/r/experiments/assistant"
+              className="press block rounded-card border border-moss/25 bg-moss-tint/40 px-3 py-2.5"
+            >
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={14} className="text-moss" strokeWidth={2} />
+                <span className="text-[13px] font-medium text-ink">不想逐项填？让发布助手写</span>
+                <ChevronRight size={14} className="ml-auto text-moss" />
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-ink-soft">
+                说一句「30 分钟、报酬 30 元、下周下午」，标题、说明、要求和时段都会填好。
+              </p>
+            </Link>
+
             <Field label="实验标题">
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例：面孔吸引力判断实验" maxLength={60} />
             </Field>
@@ -170,8 +307,20 @@ export function NewExperimentForm() {
               />
             </Field>
             <Field label="地点">
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="例：俊秀楼 305 认知实验室" />
+              <Input
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="例：俊秀楼 305 认知实验室"
+                className={isPlaceholderLocation(location) ? "border-danger/50" : undefined}
+              />
             </Field>
+            {/* 助手写草稿时不知道房间号，会留「待补充」；当场提醒，别等第 3 步 */}
+            {isPlaceholderLocation(location) ? (
+              <p className="flex items-start gap-1 text-[11px] leading-4 text-danger">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                这是助手留的占位词，换成具体楼栋和房间才能发布。
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <Field label="时长（分钟）">
                 <Input
@@ -202,7 +351,10 @@ export function NewExperimentForm() {
                   <button
                     key={t}
                     type="button"
-                    onClick={() => setType(t)}
+                    onClick={() => {
+                      setType(t);
+                      applyCapacity(t === "GROUP" ? Math.max(2, Number(groupSize) || 3) : 1);
+                    }}
                     className={cn(
                       "h-10 flex-1 rounded-[10px] border text-[13px]",
                       type === t ? "border-moss bg-moss-tint text-moss" : "border-line bg-surface text-ink-soft",
@@ -214,11 +366,16 @@ export function NewExperimentForm() {
               </div>
             </Field>
             {type === "GROUP" ? (
-              <Field label="团体人数" hint="每个时段同时到场的被试数">
+              <Field label="团体人数" hint="每场必须凑满的人数">
                 <Input
                   inputMode="numeric"
                   value={groupSize}
-                  onChange={(e) => setGroupSize(e.target.value.replace(/\D/g, ""))}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "");
+                    setGroupSize(v);
+                    const size = Number(v);
+                    if (size >= 2) applyCapacity(size);
+                  }}
                 />
               </Field>
             ) : null}
@@ -259,60 +416,79 @@ export function NewExperimentForm() {
         ) : null}
 
         {step === 2 ? (
-          <div className="space-y-3">
-            <SlotBatchGenerator defaultSegment={Number(durationMin) || 30} onGenerate={mergeSlots} />
+          <div className="space-y-2.5">
+            <div>
+              <h3 className="section-title mb-1.5">点格子排时段</h3>
+              <p className="mb-2 text-[11px] leading-4 text-ink-soft">
+                点一下加一段（每段 {Number(durationMin) || 30} 分钟），再点一下取消。已经过去的时间不能选。
+              </p>
 
-            <div className="flex items-baseline justify-between">
-              <h3 className="section-title">
-                已添加 <span className="num text-ink">{slots.length}</span> 个时段
-              </h3>
-              {slots.length > 0 ? (
-                <button type="button" onClick={() => setSlots([])} className="text-[11px] text-danger">
-                  全部清空
-                </button>
+              {/* 冲突提示放在课程表上面：课程表一屏就占满了，提示压到下面等于没提示 */}
+              {deadlineConflict ? (
+                <div className="mb-2 rounded-[8px] border border-warn/30 bg-warn/5 px-3 py-2">
+                  <p className="flex items-start gap-1.5 text-[12px] leading-5 text-ink">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
+                    <span>
+                      {Number.isNaN(deadlineMs) ? (
+                        "报名截止还没填。"
+                      ) : deadlineMs <= nowMs ? (
+                        <>
+                          报名截止（
+                          <span className="num">{formatDateTimeCN(new Date(deadlineMs))}</span>
+                          ）已经过去了。
+                        </>
+                      ) : (
+                        <>
+                          报名截止（
+                          <span className="num">{formatDateTimeCN(new Date(deadlineMs))}</span>
+                          ）晚于最早时段（
+                          <span className="num">
+                            {firstUpcoming !== null ? formatDateTimeCN(new Date(firstUpcoming)) : "—"}
+                          </span>
+                          ）。
+                        </>
+                      )}
+                      发布会被拒绝。
+                    </span>
+                  </p>
+                  {suggestedDeadlineText ? (
+                    <button
+                      type="button"
+                      onClick={fixDeadline}
+                      className="mt-1 pl-5 text-[12px] font-medium text-moss"
+                    >
+                      改成 {suggestedDeadlineText}
+                    </button>
+                  ) : (
+                    <p className="mt-1 pl-5 text-[11px] text-ink-soft">
+                      最早的一段离现在太近，往后挪一段再试。
+                    </p>
+                  )}
+                </div>
               ) : null}
+
+              <SlotTimetable
+                slots={slots}
+                durationMin={Number(durationMin) || 30}
+                capacity={capacity}
+                today={today}
+                onChange={setSlots}
+              />
             </div>
 
-            {slots.length === 0 ? (
-              <div className="rounded-card border border-dashed border-line bg-surface/60 px-4 py-8 text-center text-[12px] text-ink-soft">
-                还没有时段。用上面的批量生成，或按需调整后再生成。
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {grouped.map(([day, list]) => (
-                  <div key={day} className="rounded-card border border-line bg-surface p-2.5">
-                    <p className="mb-1.5 text-[12px] font-medium text-ink">
-                      {formatDayCN(new Date(list[0].startAt))}
-                      <span className="num ml-1.5 text-ink-soft">{list.length} 段</span>
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {list.map((slot) => (
-                        <span
-                          key={slot.startAt}
-                          className="num inline-flex items-center gap-1 rounded-[5px] border border-line bg-paper px-1.5 py-0.5 text-[11px] text-ink"
-                        >
-                          {formatHM(new Date(slot.startAt))}
-                          <span className="text-ink-soft">×{slot.capacity}</span>
-                          <button
-                            type="button"
-                            aria-label="删除该时段"
-                            onClick={() => setSlots((prev) => prev.filter((s) => s.startAt !== slot.startAt))}
-                            className="text-ink-soft/60"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <p className="px-1 text-[11px] leading-5 text-ink-soft">
+              报名截止：<span className="num text-ink">{formatDateTimeCN(new Date(deadlineMs))}</span>
+            </p>
           </div>
         ) : null}
 
         {step === 3 ? (
           <div className="space-y-3">
+            <PreflightPanel
+              issues={issues}
+              onFixDeadline={suggestedDeadline ? fixDeadline : undefined}
+            />
+
             <div className="rounded-card border border-line bg-surface p-4">
               <h3 className="text-[16px] font-semibold text-ink">{title}</h3>
               <p className="mt-1 text-[12px] text-ink-soft">
@@ -323,19 +499,24 @@ export function NewExperimentForm() {
               <div className="mt-2 space-y-1 text-[12px] text-ink-soft">
                 <p>
                   报名截止：
-                  <span className="num text-ink">
-                    {formatDateTimeCN(new Date(`${deadline}:00+08:00`))}
-                  </span>
+                  <span className="num text-ink">{formatDateTimeCN(new Date(deadlineMs))}</span>
                 </p>
                 <p>
                   信誉门槛 <span className="num text-ink">{minCreditScore}</span> ·{" "}
                   {needsVerification ? "需学生认证" : "不限认证"}
                 </p>
                 <p>
-                  时段 <span className="num text-ink">{slots.length}</span> 个，总容量{" "}
-                  <span className="num text-ink">
-                    {slots.reduce((n, s) => n + s.capacity, 0)}
-                  </span>
+                  时段 <span className="num text-ink">{slots.length}</span> 个
+                  {type === "GROUP" ? (
+                    <>
+                      ，每场 <span className="num text-ink">{groupSize}</span> 人，共{" "}
+                      <span className="num text-ink">{slots.length * (Number(groupSize) || 0)}</span> 个名额
+                    </>
+                  ) : (
+                    <>
+                      ，总容量 <span className="num text-ink">{slots.reduce((n, s) => n + s.capacity, 0)}</span>
+                    </>
+                  )}
                 </p>
               </div>
               <p className="mt-2 line-clamp-4 text-[12px] leading-5 text-ink-soft">{description}</p>
@@ -345,8 +526,9 @@ export function NewExperimentForm() {
               <p className="mb-1.5 text-[12px] font-medium text-ink">时段一览</p>
               <div className="space-y-1">
                 {grouped.slice(0, 6).map(([day, list]) => (
-                  <p key={day} className="num text-[11px] text-ink-soft">
-                    {formatDayCN(new Date(list[0].startAt))}：{list.map((s) => formatHM(new Date(s.startAt))).join("、")}
+                  <p key={day} className="text-[11px] text-ink-soft">
+                    <span className="num">{formatDayCN(new Date(list[0].startAt))}</span>：
+                    <span className="num">{list.map((s) => formatHM(new Date(s.startAt))).join("、")}</span>
                   </p>
                 ))}
                 {grouped.length > 6 ? (
@@ -356,42 +538,112 @@ export function NewExperimentForm() {
             </div>
 
             <p className="text-[11px] leading-5 text-ink-soft">
-              发布后被试就能在列表里看到。被试只能从你开放的这些时段里挑，系统不会自己加时间。
+              发布后被试就能在列表里看到。发布前可以再回上一步改时段。
             </p>
           </div>
         ) : null}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
-        <div className="mx-auto flex w-full max-w-[480px] gap-2 px-4 py-2.5">
-          {step > 1 ? (
-            <Button variant="outline" size="lg" onClick={() => setStep((s) => s - 1)} className="flex-1">
-              上一步
-            </Button>
+        <div className="mx-auto w-full max-w-[480px] gap-2 px-4 py-2.5">
+          {step === 3 && blocking.length > 0 ? (
+            <p className="mb-1.5 text-center text-[11px] text-danger">
+              还有 {blocking.length} 项要补，补完才能发布
+            </p>
           ) : null}
-          {step < 3 ? (
-            <Button size="lg" className="flex-[2]" onClick={next}>
-              下一步
-            </Button>
-          ) : (
-            <>
-              <Button
-                variant="outline"
-                size="lg"
-                className="flex-1"
-                loading={submitting}
-                onClick={() => submit(false)}
-              >
-                存草稿
+          <div className="flex gap-2">
+            {step > 1 ? (
+              <Button variant="outline" size="lg" onClick={() => setStep((s) => s - 1)} className="flex-1">
+                上一步
               </Button>
-              <Button size="lg" className="flex-[2]" loading={submitting} onClick={() => submit(true)}>
-                发布
+            ) : null}
+            {step < 3 ? (
+              <Button size="lg" className="flex-[2]" onClick={next}>
+                下一步
               </Button>
-            </>
-          )}
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="flex-1"
+                  loading={submitting}
+                  disabled={blocking.length > 0}
+                  onClick={() => submit(false)}
+                >
+                  存草稿
+                </Button>
+                <Button
+                  size="lg"
+                  className="flex-[2]"
+                  loading={submitting}
+                  disabled={blocking.length > 0}
+                  onClick={() => submit(true)}
+                >
+                  发布
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
-
     </main>
+  );
+}
+
+/** 发布前体检面板：逐条列出 domain 的判定结果，页面不重复写规则 */
+function PreflightPanel({
+  issues,
+  onFixDeadline,
+}: {
+  issues: DraftIssue[];
+  /** 截止时间冲突可以当场改好，不必让用户退回第 1 步 */
+  onFixDeadline?: () => void;
+}) {
+  const blocking = issues.filter((i) => i.level === "block");
+
+  return (
+    <div className="rounded-card border border-line bg-surface p-3">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[12px] font-medium text-ink">发布前检查</p>
+        <span className={cn("text-[11px]", blocking.length ? "text-danger" : "text-moss")}>
+          {blocking.length ? `${blocking.length} 项要补` : "全部通过"}
+        </span>
+      </div>
+
+      {issues.length === 0 ? (
+        <p className="mt-1.5 text-[12px] leading-5 text-ink-soft">
+          标题、说明、地点、时长、报酬和时段都齐了，可以直接发布。
+        </p>
+      ) : (
+        <ul className="mt-1.5 space-y-1">
+          {issues.map((issue, i) => (
+            <li key={`${issue.field}-${i}`} className="flex items-start gap-1.5 text-[12px] leading-5">
+              <span
+                className={cn(
+                  "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px]",
+                  issue.level === "block" ? "bg-danger/10 text-danger" : "bg-warn/10 text-warn",
+                )}
+                aria-hidden
+              >
+                !
+              </span>
+              <span className={issue.level === "block" ? "text-ink" : "text-ink-soft"}>
+                {/* 文案本身已经带字段名时不再重复前缀，否则会读出「报名截止：报名截止时间…」 */}
+                {issue.message.startsWith(DRAFT_FIELD_LABEL[issue.field]) ? null : (
+                  <span className="text-ink-soft">{DRAFT_FIELD_LABEL[issue.field]}：</span>
+                )}
+                {issue.message}
+                {issue.field === "signupDeadline" && onFixDeadline ? (
+                  <button type="button" onClick={onFixDeadline} className="ml-1 font-medium text-moss">
+                    一键改好
+                  </button>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

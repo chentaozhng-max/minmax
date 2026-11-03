@@ -17,6 +17,11 @@ type Props = {
   emptyHint?: string;
   /** 只读展示：不可点，也不显示勾选态（详情页用） */
   readOnly?: boolean;
+  /**
+   * 团体实验传 "GROUP"：格子里的数字语义从「还剩几个名额」变成「已凑几人成团」。
+   * 同一个 "剩 2/3"，一对一读作"还剩 2 个名额"，团体该读作"还差 1 人成团"。
+   */
+  experimentType?: "INDIVIDUAL" | "GROUP";
 };
 
 /**
@@ -32,6 +37,7 @@ export function SlotGrid({
   disabledIds = [],
   emptyHint = "暂时没有可预约的时段",
   readOnly = false,
+  experimentType = "INDIVIDUAL",
 }: Props) {
   const days = useMemo(() => {
     const map = new Map<string, SlotView[]>();
@@ -143,7 +149,11 @@ export function SlotGrid({
                   full ? "text-ink-soft/60" : "text-moss",
                 )}
               >
-                {full ? "已约满" : `剩 ${slot.remaining}/${slot.capacity}`}
+                {experimentType === "GROUP"
+                  ? `已成团 ${slot.bookedCount}/${slot.capacity} 人`
+                  : full
+                    ? "已约满"
+                    : `剩 ${slot.remaining}/${slot.capacity}`}
               </span>
               {selected ? (
                 <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-moss">

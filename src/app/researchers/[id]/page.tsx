@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { makeResearcherPageQuery } from "@/adapters/db/prisma/page-query-researcher";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { CreditRing } from "@/components/credit-ring";
@@ -11,21 +12,10 @@ import { rewardLabel } from "@/lib/reward";
 export default async function ResearcherPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePage();
   const { id } = await params;
-  const researcher = await prisma.user.findUnique({
-    where: { id },
-    include: {
-      experiments: {
-        where: { status: "PUBLISHED" },
-        include: { slots: true },
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
-  if (!researcher || researcher.role !== "RESEARCHER") notFound();
+  const researcher = await makeResearcherPageQuery(prisma).findResearcherPublicPage(id);
+  if (!researcher) notFound();
 
-  const hostedCount = await prisma.creditEvent.count({
-    where: { userId: researcher.id, reason: "ATTENDED" },
-  });
+  const hostedCount = researcher.hostedCount;
 
   const now = new Date();
   const openExperiments = researcher.experiments

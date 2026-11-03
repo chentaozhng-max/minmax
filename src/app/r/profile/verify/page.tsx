@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { makeAccountPageQuery } from "@/adapters/db/prisma/page-query-experiment";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -6,7 +7,7 @@ import { VerifyForm } from "@/components/verify-form";
 
 export default async function ResearcherVerifyPage() {
   const session = await requirePage("RESEARCHER");
-  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  const user = await makeAccountPageQuery(prisma).findVerifyFormUser(session.sub);
   if (!user) return null;
 
   return (

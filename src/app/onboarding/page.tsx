@@ -1,10 +1,11 @@
 import { requirePage } from "@/lib/page-auth";
 import { prisma } from "@/lib/prisma";
+import { makeAccountPageQuery } from "@/adapters/db/prisma/page-query-experiment";
 import { OnboardingForm } from "./onboarding-form";
 
 export default async function OnboardingPage() {
   const session = await requirePage();
-  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  const user = await makeAccountPageQuery(prisma).findOnboardingUser(session.sub);
   if (!user) return null;
 
   return (

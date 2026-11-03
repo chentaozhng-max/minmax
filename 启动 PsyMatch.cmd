@@ -33,7 +33,12 @@ if not defined NODE (
   exit /b 1
 )
 for %%i in ("%NODE%") do set "NODE_DIR=%%~dpi"
-set "NPM=%NODE_DIR%npm.cmd"
+rem 去掉尾部反斜杠，避免 PATH 里出现 "C:\Program Files\nodejs\;" 这种条目
+if "%NODE_DIR:~-1%"=="\" set "NODE_DIR=%NODE_DIR:~0,-1%"
+rem 把 Node 目录前置进 PATH：npm 的 lifecycle 脚本（如 prisma 的 preinstall）
+rem 是用裸 node 命令启动子进程的，只找到 node.exe 而不写回 PATH 依然会失败。
+set "PATH=%NODE_DIR%;%PATH%"
+set "NPM=%NODE_DIR%\npm.cmd"
 echo [1/7] Node.js:  %NODE%
 
 rem ============================================================

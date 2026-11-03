@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { makePageQuery } from "@/adapters/db/prisma/page-query";
 import { requirePage } from "@/lib/page-auth";
 import { ChatView } from "./chat-view";
 import { getChatView } from "@/server/agent";
@@ -8,10 +9,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
   const session = await requirePage("SUBJECT");
   const { id } = await params;
 
-  const experiment = await prisma.experiment.findUnique({
-    where: { id },
-    include: { researcher: true },
-  });
+  const experiment = await makePageQuery(prisma).findChatHeaderExperiment(id);
   if (!experiment) notFound();
 
   const initial = await getChatView(id, session.sub);
@@ -25,7 +23,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
         durationMin: experiment.durationMin,
         location: experiment.location,
         rewardText: experiment.rewardText,
-        researcherName: experiment.researcher.name,
+        researcherName: experiment.researcherName,
       }}
     />
   );

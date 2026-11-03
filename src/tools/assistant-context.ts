@@ -1,0 +1,51 @@
+/**
+ * 助手（跨实验）工具上下文。
+ *
+ * ## 为什么另开一份，而不是扩展 AgentContext
+ *
+ * `AgentContext` 里 `experiment` 是**必填**的 —— 那套工具服务于「一门实验里排期」。
+ * 跨实验搜索的上下文里根本没有"当前实验"，硬塞一个假 experiment 进去，
+ * 会让 7 个老工具在错误的语义下可被调用（模型可能真的去 book 一个它以为是当前的实验）。
+ *
+ * 两份上下文 = 两个注册表 = 两种能力边界，编译期就把界限划清：
+ * 搜索场景下模型**根本看不到** book_slot。
+ */
+
+import type { SearchCriteria } from "@/domain/search-criteria";
+
+/** 助手眼里的一门候选实验（渲染卡片用） */
+export type AssistantExperimentCard = {
+  id: string;
+  title: string;
+  location: string;
+  durationMin: number;
+  rewardText: string;
+  researcherName: string;
+  matchedSlotCount: number;
+  nextSlotAt: string | null;
+  matchedSlots: { startAt: string; endAt: string; remaining: number }[];
+};
+
+/** 跨实验搜索的结果摘要（工具返回值 & 页面渲染共用） */
+export type AssistantSearchPayload = {
+  summary: string;
+  experiments: AssistantExperimentCard[];
+  totalEligible: number;
+  excluded: { title: string; reason: string }[];
+  excludedCount: number;
+};
+
+export type AssistantContext = {
+  subject: {
+    id: string;
+    creditScore: number;
+    studentVerified: boolean;
+    bannedUntil: Date | null;
+  };
+  now: Date;
+  /**
+   * 执行搜索。注入成回调，工具层不直接 import prisma：
+   * 这样工具测试可以塞假实现，也不必知道适配器叫什么名字。
+   */
+  search(criteria: SearchCriteria): Promise<AssistantSearchPayload>;
+};

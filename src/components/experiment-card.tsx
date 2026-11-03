@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MapPin, Clock3 } from "lucide-react";
+import { Bot, MapPin, Clock3 } from "lucide-react";
 import { VerifiedBadge } from "@/components/ui/badge";
 import { RewardTag } from "@/components/reward-tag";
 import { formatDateTimeCN, formatHM } from "@/lib/time";
@@ -15,15 +15,16 @@ export function ExperimentCard({ card }: { card: CardView }) {
   const soon = next ? next.getTime() - Date.now() < 48 * 60 * 60 * 1000 : false;
 
   return (
-    <Link
-      href={`/experiments/${card.id}`}
-      className="press relative block overflow-hidden rounded-card border border-line bg-surface"
-    >
+    <div className="press relative overflow-hidden rounded-card border border-line bg-surface">
+      {/* 整卡可点：Link 用绝对定位铺满，AI 入口按钮靠 z-index 压在它上面。
+          不能把按钮套在 <Link> 里 —— <a> 里嵌 <a> 是非法的，浏览器会把 DOM 拆开。 */}
+      <Link href={`/experiments/${card.id}`} className="absolute inset-0" aria-label={card.title} />
+
       <span
         className={`absolute left-0 top-0 h-full w-[3px] ${soon ? "bg-clay" : "bg-moss/30"}`}
         aria-hidden
       />
-      <div className="pl-[19px] pr-4 py-3.5">
+      <div className="relative pl-[19px] pr-4 py-3.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[15px] font-semibold leading-[22px] text-ink">{card.title}</h3>
           <RewardTag text={card.rewardText} className="mt-0.5" />
@@ -79,8 +80,17 @@ export function ExperimentCard({ card }: { card: CardView }) {
             {card.eligibility.message}
           </p>
         ) : null}
+
+        {/* AI 入口：列表里也多一条路，省得先进详情页再进对话 */}
+        <Link
+          href={`/experiments/${card.id}/chat`}
+          className="relative z-10 mt-2.5 inline-flex items-center gap-1 rounded-pill border border-moss/25 bg-moss-tint/50 px-2.5 py-1 text-[11px] text-moss active:bg-moss-tint"
+        >
+          <Bot size={12} strokeWidth={2.2} />
+          让 AI 帮我挑时段
+        </Link>
       </div>
-    </Link>
+    </div>
   );
 }
 

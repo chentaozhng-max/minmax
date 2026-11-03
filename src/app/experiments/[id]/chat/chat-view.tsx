@@ -9,7 +9,14 @@ import { SlotGrid } from "@/components/slot-grid";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
+import { isExperimentScopedBlock, type EligibilityReason } from "@/domain/credit";
 import type { ChatMessageView, ChatView as ChatViewData, SlotView } from "@/lib/types";
+
+/** blocked.reason 是字符串（跨 API 边界），这里收窄后交给领域规则判断 */
+function canSwitchExperiment(reason: string): boolean {
+  if (reason !== "BANNED" && reason !== "CREDIT" && reason !== "VERIFY") return false;
+  return isExperimentScopedBlock(reason as EligibilityReason);
+}
 
 type ExperimentBrief = {
   title: string;
@@ -171,6 +178,11 @@ export function ChatView({
                 去认证
               </Link>
             ) : null}
+            {canSwitchExperiment(blocked.reason) ? (
+              <p className="mt-1 text-[11px] text-danger/80">
+                这是这门实验的门槛，别的实验可能没这个要求。
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -187,6 +199,7 @@ export function ChatView({
               value={picked}
               onChange={setPicked}
               multi
+              experimentType={view.experimentType}
               emptyHint="目前没有空位，可以给主试留言问问"
             />
           </div>
@@ -197,9 +210,19 @@ export function ChatView({
 
       {blocked ? (
         <div className="border-t border-line bg-surface px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
-          <Button size="lg" block disabled>
-            暂不可预约
-          </Button>
+          {canSwitchExperiment(blocked.reason) ? (
+            // 这门实验的门槛而已，换一门可能就过了 —— 给个出口，别把人堵死在这
+            <Link href="/" className="block">
+              <Button size="lg" block>
+                去约别的实验
+              </Button>
+            </Link>
+          ) : (
+            // 禁期挂在用户身上，换哪门实验都报不了 —— 给按钮等于骗他点
+            <Button size="lg" block disabled>
+              暂不可预约
+            </Button>
+          )}
         </div>
       ) : formMode || picked.length > 0 ? (
         <div className="border-t border-line bg-surface px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">

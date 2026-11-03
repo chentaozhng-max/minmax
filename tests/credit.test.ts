@@ -6,6 +6,7 @@ import {
   checkEligibility,
   CREDIT,
   isBanned,
+  isExperimentScopedBlock,
   isFreeSubjectCancel,
 } from "@/lib/credit";
 
@@ -128,6 +129,22 @@ describe("报名资格（前端置灰与服务端拦截共用）", () => {
 
   it("刚好达到门槛可以通过", () => {
     expect(checkEligibility({ ...base, creditScore: 80, minCreditScore: 80 }, NOW).ok).toBe(true);
+  });
+});
+
+describe("拦截作用域：哪些能靠换实验绕开", () => {
+  // 这决定了对话页底部给不给「去约别的实验」的出口。
+  // 给错了等于骗他点 —— 尤其是禁期，换哪门实验都报不了。
+  it("★ CREDIT 是实验级的（门槛由每门实验自己定）→ 允许换实验", () => {
+    expect(isExperimentScopedBlock("CREDIT")).toBe(true);
+  });
+
+  it("★ VERIFY 是实验级的（认证要求由每门实验自己设开关）→ 允许换实验", () => {
+    expect(isExperimentScopedBlock("VERIFY")).toBe(true);
+  });
+
+  it("★ BANNED 是用户级的（禁期挂在账号上）→ 不允许换实验，换了也白换", () => {
+    expect(isExperimentScopedBlock("BANNED")).toBe(false);
   });
 });
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, FlaskConical, MapPin, UserRound } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { makeCreditPageQuery } from "@/adapters/db/prisma/page-query-credit";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { CreditRing } from "@/components/credit-ring";
@@ -68,32 +69,22 @@ export default async function CreditEventDetailPage({
 }) {
   const session = await requirePage();
   const { id } = await params;
+  const query = makeCreditPageQuery(prisma);
 
-  const event = await prisma.creditEvent.findUnique({ where: { id } });
+  const event = await query.findOwnedCreditEvent(id, session.sub);
   // 不是自己的记录一律当不存在，避免用 id 猜别人的信誉流水
-  if (!event || event.userId !== session.sub) notFound();
+  if (!event) notFound();
 
-  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  const user = await query.findCreditPageUser(session.sub);
   if (!user) return null;
 
   const appointment = event.appointmentId
-    ? await prisma.appointment.findUnique({
-        where: { id: event.appointmentId },
-        include: {
-          experiment: { include: { researcher: true } },
-          slot: true,
-          subject: true,
-        },
-      })
+    ? await query.findAppointmentFull(event.appointmentId)
     : null;
 
   // 变动后分数：从 100 分起按时间顺序重放所有流水（同 0–100 截断规则），
   // 这样即使后来又发生变动，也能看到"这条记录生效时"的分数。
-  const allEvents = await prisma.creditEvent.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, delta: true },
-  });
+  const allEvents = await query.findCreditDeltasAsc(user.id);
   // CREDIT 是 as const，直接进 Math.min 会把类型推成字面量 100，这里显式放宽
   const minScore: number = CREDIT.MIN;
   const maxScore: number = CREDIT.MAX;

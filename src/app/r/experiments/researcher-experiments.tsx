@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PageHeader } from "@/components/page-header";
+import { AlertTriangle } from "lucide-react";
+import { Modal, PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
 import { EmptyState } from "@/components/experiment-card";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { experimentStatusLabel, type ExperimentStatus } from "@/lib/domain";
+import { banUntilText } from "@/domain/experiment-rules";
 import { formatDateTimeCN } from "@/lib/time";
 import { rewardLabel } from "@/lib/reward";
 import { cn } from "@/lib/cn";
@@ -36,12 +38,23 @@ const FILTERS = [
   { key: "CLOSED", label: "已关闭" },
 ];
 
-export function ResearcherExperiments() {
+export function ResearcherExperiments({
+  bannedUntil,
+  bannedDays,
+}: {
+  bannedUntil: string | null;
+  bannedDays: number;
+}) {
   const [filter, setFilter] = useState("ALL");
+  const [banOpen, setBanOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["r-experiments"],
     queryFn: () => api<Row[]>("/api/r/experiments"),
   });
+
+  const bannedDate = bannedUntil ? new Date(bannedUntil) : null;
+  const banned = bannedDate !== null;
+  const daysLeft = bannedDays;
 
   const rows = (data ?? []).filter((r) => filter === "ALL" || r.status === filter);
 
@@ -52,11 +65,35 @@ export function ResearcherExperiments() {
         back="auto"
         profile={{ role: "RESEARCHER" }}
         right={
-          <Link href="/r/experiments/new">
-            <Button size="sm">发布</Button>
-          </Link>
+          <>
+            <Link href="/r/schedule" className="px-2 text-[12px] text-moss">
+              日程
+            </Link>
+            {banned ? (
+              <Button size="sm" variant="outline" onClick={() => setBanOpen(true)}>
+                发布
+              </Button>
+            ) : (
+              <Link href="/r/experiments/new">
+                <Button size="sm">发布</Button>
+              </Link>
+            )}
+          </>
         }
       />
+
+      {banned && bannedDate ? (
+        <div className="mx-4 mt-3 flex items-start gap-2 rounded-[8px] border border-warn/30 bg-warn/5 px-3 py-2">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warn" />
+          <p className="text-[11px] leading-5 text-ink">
+            因累计未到场，禁发布至 <span className="num">{banUntilText(bannedDate)}</span>
+            {daysLeft > 0 ? `（还有 ${daysLeft} 天）` : ""}。
+            <Link href="/r/appeals" className="ml-1 text-moss underline">
+              去申诉
+            </Link>
+          </p>
+        </div>
+      ) : null}
 
       <div className="scroll-x sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">
         {FILTERS.map((f) => (
@@ -85,9 +122,15 @@ export function ResearcherExperiments() {
             title="还没有实验"
             description="发布第一个实验，开放你能来的时段，被试挑时段报名。"
             action={
-              <Link href="/r/experiments/new">
-                <Button size="md">发布实验</Button>
-              </Link>
+              banned ? (
+                <Button size="md" onClick={() => setBanOpen(true)}>
+                  发布实验
+                </Button>
+              ) : (
+                <Link href="/r/experiments/new">
+                  <Button size="md">发布实验</Button>
+                </Link>
+              )
             }
           />
         ) : (
@@ -141,6 +184,28 @@ export function ResearcherExperiments() {
           </div>
         )}
       </div>
+
+      {/* 点「发布」先弹这个，而不是让人填完一整页再被服务端拒绝 */}
+      <Modal open={banOpen} onClose={() => setBanOpen(false)} title="暂时不能发布实验">
+        <p className="text-[13px] leading-6 text-ink">
+          因累计未到场，禁发布至{" "}
+          <span className="num font-medium">{bannedDate ? banUntilText(bannedDate) : ""}</span>
+          {daysLeft > 0 ? `（还有 ${daysLeft} 天）` : ""}。
+        </p>
+        <p className="mt-2 rounded-[8px] bg-mist/70 px-3 py-2 text-[12px] leading-5 text-ink-soft">
+          禁期到点自动解除。如果这次未到场有争议，可以先申诉，成立后会撤销记录并恢复发布权限。
+        </p>
+        <div className="mt-4 flex gap-2">
+          <Button variant="outline" size="lg" className="flex-1" onClick={() => setBanOpen(false)}>
+            知道了
+          </Button>
+          <Link href="/r/appeals" className="flex-1">
+            <Button size="lg" block onClick={() => setBanOpen(false)}>
+              去申诉
+            </Button>
+          </Link>
+        </div>
+      </Modal>
 
       <TabBar role="RESEARCHER" />
     </main>

@@ -27,6 +27,8 @@ export type ChatMessageView = {
 export type ChatView = {
   mode: "llm" | "form";
   state: string;
+  /** 团体实验下时段格子的数字语义要换成"成团数"，所以这里带上实验类型 */
+  experimentType: "INDIVIDUAL" | "GROUP";
   messages: ChatMessageView[];
   suggestedSlots: SlotView[];
   availableSlots: SlotView[];

@@ -33,6 +33,7 @@ async function cleanup(tag: string) {
   const ids = users.map((u) => u.id);
   if (ids.length === 0) return;
   const experiments = await prisma.experiment.findMany({ where: { researcherId: { in: ids } } });
+  await prisma.notification.deleteMany({ where: { userId: { in: ids } } });
   await prisma.appointment.deleteMany({
     where: { OR: [{ subjectId: { in: ids } }, { experimentId: { in: experiments.map((e) => e.id) } }] },
   });
@@ -45,6 +46,7 @@ async function cleanup(tag: string) {
 
 async function main() {
   const TAG = "1990000";
+
   await cleanup(TAG);
 
   const now = new Date();
@@ -313,6 +315,398 @@ async function main() {
   check(
     "主试 noShowCount +1",
     researcherAfterAppeal.noShowCount - researcherBeforeAppeal.noShowCount === 1,
+  );
+
+  console.log("\n[7] 团体实验：容量被强制改成 groupSize，第 groupSize+1 人被拒");
+  const { publishExperiment } = await import("../src/application/publish-experiment");
+  const { makeDefaultPublishRepository } = await import(
+    "../src/adapters/db/prisma/experiment-publish-repo"
+  );
+
+  // +8 天，避开前面 +2/+3/+4/+5/+6 天的已占用时段，防止撞上时间冲突规则
+  const groupStart = new Date(now.getTime() + 8 * DAY);
+  const published = await publishExperiment(
+    {
+      userId: researcher.id,
+      title: "团体验收实验",
+      description: "验证团体实验容量强制等于 groupSize。",
+      location: "测试地点",
+      durationMin: 30,
+      rewardText: "¥1",
+      type: "GROUP",
+      groupSize: 3,
+      minCreditScore: 0,
+      needsVerification: false,
+      signupDeadline: new Date(now.getTime() + 4 * DAY).toISOString(),
+      // ★ 主试故意填 capacity: 1 —— 应被改写成 3
+      slots: [
+        { startAt: groupStart.toISOString(), endAt: new Date(groupStart.getTime() + 30 * 60000).toISOString(), capacity: 1 },
+      ],
+      publish: true,
+      now,
+    },
+    {
+      repo: makeDefaultPublishRepository(),
+      loadPublisher: async (id: string) => ({ id, bannedUntil: null }),
+    },
+  );
+
+  const groupSlot = await prisma.slot.findFirstOrThrow({
+    where: { experimentId: published.id },
+  });
+  check("主试填 capacity:1 被纠正为 groupSize=3", groupSlot.capacity === 3, `capacity=${groupSlot.capacity}`);
+
+  // 前面几节已经给 subjects[0..3] 建了预约、还给 subjects[3] 加了禁期，
+  // 团体这节用 4 个干净的被试，避免撞上时间冲突与封禁规则。
+  const groupSubjects: { id: string }[] = [];
+  for (let i = 0; i < 4; i += 1) {
+    groupSubjects.push(
+      await prisma.user.create({
+        data: {
+          phone: `${TAG}200${i}`,
+          role: "SUBJECT",
+          name: `团体验收被试${i + 1}`,
+          studentVerified: true,
+          creditScore: 100,
+        },
+      }),
+    );
+  }
+
+  const groupTries = await Promise.allSettled([
+    bookSlot({ userId: groupSubjects[0].id, slotId: groupSlot.id, now }),
+    bookSlot({ userId: groupSubjects[1].id, slotId: groupSlot.id, now }),
+    bookSlot({ userId: groupSubjects[2].id, slotId: groupSlot.id, now }),
+    bookSlot({ userId: groupSubjects[3].id, slotId: groupSlot.id, now }),
+  ]);
+  const groupOk = groupTries.filter((r) => r.status === "fulfilled").length;
+  const groupAfter = await prisma.slot.findUniqueOrThrow({ where: { id: groupSlot.id } });
+  check("恰好 3 人成团", groupOk === 3, `成功 ${groupOk} 次`);
+  check("第 4 人被拒且不超卖", groupAfter.bookedCount === 3, `bookedCount=${groupAfter.bookedCount}`);
+
+  console.log("\n[8] 到时提醒：3 小时前发一条，重复执行不重发");
+  const { sendDueReminders } = await import("../src/application/send-reminders");
+  const { makeDefaultNotificationRepository } = await import(
+    "../src/adapters/db/prisma/notification-repo"
+  );
+
+  // 用假 LLM（未配置）锁死降级路径：验收要的是「不丢通知」，不是「模型文案好不好」。
+  // 真打网络会让验收多一个不确定源，且慢。
+  const stubLlm = {
+    configured: () => false,
+    chat: async () => {
+      throw new Error("验收里不该真的调用模型");
+    },
+  };
+
+  const reminderStart = new Date(now.getTime() + 3 * 3600 * 1000);
+  const reminderSlot = await prisma.slot.create({
+    data: {
+      experimentId: published.id,
+      startAt: reminderStart,
+      endAt: new Date(reminderStart.getTime() + 30 * 60000),
+      capacity: 3,
+    },
+  });
+  const reminderAppointment = await prisma.appointment.create({
+    data: {
+      experimentId: published.id,
+      slotId: reminderSlot.id,
+      subjectId: groupSubjects[0].id,
+      status: "CONFIRMED",
+    },
+  });
+
+  const reminderDeps = {
+    notifications: makeDefaultNotificationRepository(),
+    llm: stubLlm,
+  };
+  const firstRun = await sendDueReminders(reminderDeps, now);
+  const mine = await prisma.notification.findMany({
+    where: { appointmentId: reminderAppointment.id },
+  });
+
+  check("3 小时前的预约生成了提醒", mine.length === 1, `count=${mine.length}`);
+  check("档位是 H3", mine[0]?.level === "H3", `level=${mine[0]?.level}`);
+  check(
+    "模型不可用时用模板兜底，文案非空且带实验名",
+    Boolean(mine[0]?.content) && mine[0].content.includes("团体验收实验"),
+  );
+  check("默认未读", mine[0]?.readAt === null);
+
+  const secondRun = await sendDueReminders(reminderDeps, now);
+  const afterSecond = await prisma.notification.count({
+    where: { appointmentId: reminderAppointment.id },
+  });
+
+  check("重复执行不重发（幂等）", afterSecond === 1, `count=${afterSecond}`);
+  check("重复的那次计入 skipped", secondRun.skipped >= 1, `skipped=${secondRun.skipped}`);
+  check(
+    "两次都没走模型（未配置 LLM → 全模板）",
+    firstRun.fallback >= 1 && secondRun.fallback === 0,
+    `first.fallback=${firstRun.fallback} second.fallback=${secondRun.fallback}`,
+  );
+
+  const unreadBefore = await makeDefaultNotificationRepository().countUnread(groupSubjects[0].id);
+  const marked = await makeDefaultNotificationRepository().markAllRead(
+    groupSubjects[0].id,
+    new Date(now.getTime() + 1000),
+  );
+  const unreadAfter = await makeDefaultNotificationRepository().countUnread(groupSubjects[0].id);
+
+  check("未读数在标记已读后归零", unreadBefore >= 1 && unreadAfter === 0, `${unreadBefore} → ${unreadAfter}`);
+  check("标记已读返回受影响条数", marked === unreadBefore, `marked=${marked}`);
+
+  console.log("\n[9] 日程表：以 Slot 为基表，0 人报名也有行；导出 CSV 可被 Excel 打开");
+  const { makeDefaultScheduleQuery } = await import("../src/adapters/db/prisma/schedule-query");
+  const { buildScheduleCsv } = await import("../src/application/export-schedule");
+
+  // 造一个「没有任何预约」的实验：这是「打墙」场景的直接验证
+  const emptyStart = new Date(now.getTime() + 9 * DAY);
+  const emptyExperiment = await prisma.experiment.create({
+    data: {
+      researcherId: researcher.id,
+      title: "空日程验收实验",
+      description: "用来验证 0 人报名时日程表仍有行骨架。",
+      location: "测试地点",
+      durationMin: 30,
+      rewardText: "¥1",
+      type: "GROUP",
+      groupSize: 2,
+      minCreditScore: 0,
+      needsVerification: false,
+      signupDeadline: new Date(now.getTime() + 5 * DAY),
+      status: "PUBLISHED",
+    },
+  });
+  await prisma.slot.create({
+    data: {
+      experimentId: emptyExperiment.id,
+      startAt: emptyStart,
+      endAt: new Date(emptyStart.getTime() + 30 * 60000),
+      capacity: 2,
+    },
+  });
+
+  const emptyRows = await makeDefaultScheduleQuery().listSchedule({
+    experimentId: emptyExperiment.id,
+    researcherId: researcher.id,
+  });
+
+  check("0 人报名时日程表仍有 1 行（不是空表）", emptyRows.length === 1, `rows=${emptyRows.length}`);
+  check("那行没有预约但有时段信息", emptyRows[0]?.appointmentId === null && Boolean(emptyRows[0]?.slotId));
+  check("团体实验的 groupSize 透出来了", emptyRows[0]?.groupSize === 2, `groupSize=${emptyRows[0]?.groupSize}`);
+
+  const csv = buildScheduleCsv(emptyRows);
+  check("CSV 以 UTF-8 BOM 开头（Excel 中文不乱码）", csv.startsWith("\uFEFF"));
+  check("CSV 用 CRLF 行尾", csv.includes("\r\n"));
+  check("空时段在 CSV 里写成「空位」", csv.includes("空位"));
+  check("导出时间带年份", csv.includes(String(now.getFullYear())));
+
+  // 归属检查：换个 researcherId 查同一个实验 → 查不到（这正是导出路由的安全边界）
+  const foreignRows = await makeDefaultScheduleQuery().listSchedule({
+    experimentId: emptyExperiment.id,
+    researcherId: "someone-else",
+  });
+  check("换主试查同一个实验 → 0 行（越权拿不到数据）", foreignRows.length === 0, `rows=${foreignRows.length}`);
+
+  console.log("\n[10] 助手页：跨实验看自己的安排，撞车要点出来");
+  const { makeAssistantQuery } = await import("../src/adapters/db/prisma/assistant-query");
+  const { buildAssistantBrief } = await import("../src/application/assistant-overview");
+  const { ACTIVE_APPOINTMENT_STATUSES } = await import("../src/lib/domain");
+
+  // ⚠️ 必须用专属被试：前面几节已经给 subjects[0] 造了未来预约，
+  // 复用他会让「3 场」变成「4 场」—— 这是测试数据隔离问题，不是产品 bug。
+  const asstSubject = await prisma.user.create({
+    data: {
+      phone: `${TAG}9001`,
+      role: "SUBJECT",
+      name: "助手验收被试",
+      studentVerified: true,
+      creditScore: 100,
+    },
+  });
+  const asstBase = new Date(now.getTime() + 7 * DAY);
+  asstBase.setUTCMinutes(0, 0, 0);
+
+  // 三个实验：甲 15:00-16:00、乙 15:30-16:30（撞甲）、丙 18:00-19:00（不撞）
+  const asstPlan = [
+    { title: "助手甲", offsetMin: 0, status: "CONFIRMED" },
+    { title: "助手乙", offsetMin: 30, status: "CONFIRMED" },
+    { title: "助手丙", offsetMin: 180, status: "CONFIRMED" },
+  ];
+  for (const plan of asstPlan) {
+    const startAt = new Date(asstBase.getTime() + plan.offsetMin * 60000);
+    const exp = await prisma.experiment.create({
+      data: {
+        researcherId: researcher.id,
+        title: plan.title,
+        description: "助手验收用",
+        location: "验收楼 101",
+        durationMin: 60,
+        rewardText: "¥1",
+        minCreditScore: 0,
+        needsVerification: false,
+        signupDeadline: new Date(now.getTime() + 3 * DAY),
+        status: "PUBLISHED",
+      },
+    });
+    const slot = await prisma.slot.create({
+      data: { experimentId: exp.id, startAt, endAt: new Date(startAt.getTime() + 60 * 60000), capacity: 1, bookedCount: 1 },
+    });
+    await prisma.appointment.create({
+      data: { experimentId: exp.id, slotId: slot.id, subjectId: asstSubject.id, status: plan.status },
+    });
+  }
+
+  const brief = await buildAssistantBrief(
+    { query: makeAssistantQuery(prisma as never), now },
+    asstSubject.id,
+    [...ACTIVE_APPOINTMENT_STATUSES],
+  );
+
+  check("助手能看到 3 场安排（跨 3 个实验）", brief.upcoming.length === 3, `count=${brief.upcoming.length}`);
+  check("★ 撞车只报 1 组（甲 vs 乙，丙无关）", brief.overlaps.length === 1, `overlaps=${brief.overlaps.length}`);
+  check("撞车的正是甲和乙", brief.overlaps[0]?.firstTitle === "助手甲" && brief.overlaps[0]?.secondTitle === "助手乙");
+  check("★ 撞车优先上头条（不是「最近一场」）", brief.headline.includes("撞车") && !brief.headline.includes("最近一场"));
+  check("按开始时间升序（甲 < 乙 < 丙）", brief.upcoming[0]?.experimentTitle === "助手甲" && brief.upcoming[2]?.experimentTitle === "助手丙");
+
+  // 换一个「什么都不算占用」的状态列表 → 空，且不打库
+  const emptyBrief = await buildAssistantBrief(
+    { query: makeAssistantQuery(prisma as never), now },
+    asstSubject.id,
+    [],
+  );
+  check("状态列表为空 → 助手显示「没有安排」", emptyBrief.upcoming.length === 0 && emptyBrief.headline.includes("没有安排"));
+
+  console.log("\n[11] 约不了时给出口：能换实验的给按钮，禁期不给；换实验 = 新 session");
+  const { isExperimentScopedBlock } = await import("../src/domain/credit");
+  const { getOrCreateSession } = await import("../src/server/agent");
+
+  check("★ 信誉门槛是实验级的 → 给「去约别的实验」", isExperimentScopedBlock("CREDIT"));
+  check("★ 学生认证是实验级的 → 给「去约别的实验」", isExperimentScopedBlock("VERIFY"));
+  check("★ 禁期是用户级的 → 不给按钮（换了也白换）", !isExperimentScopedBlock("BANNED"));
+
+  // 换实验就是新 session：这正是「约不了就换场，不用重置旧会话」的技术依据
+  const switchSubject = await prisma.user.create({
+    data: {
+      phone: `${TAG}9002`,
+      role: "SUBJECT",
+      name: "换场验收被试",
+      studentVerified: true,
+      creditScore: 100,
+    },
+  });
+  const expA = await prisma.experiment.create({
+    data: {
+      researcherId: researcher.id,
+      title: "换场实验A",
+      description: "验收用",
+      location: "验收楼 202",
+      durationMin: 30,
+      rewardText: "¥1",
+      minCreditScore: 0,
+      needsVerification: false,
+      signupDeadline: new Date(now.getTime() + 3 * DAY),
+      status: "PUBLISHED",
+    },
+  });
+  const expB = await prisma.experiment.create({
+    data: {
+      researcherId: researcher.id,
+      title: "换场实验B",
+      description: "验收用",
+      location: "验收楼 202",
+      durationMin: 30,
+      rewardText: "¥1",
+      minCreditScore: 0,
+      needsVerification: false,
+      signupDeadline: new Date(now.getTime() + 3 * DAY),
+      status: "PUBLISHED",
+    },
+  });
+
+  const sessionA = await getOrCreateSession(expA.id, switchSubject.id);
+  const sessionA2 = await getOrCreateSession(expA.id, switchSubject.id);
+  const sessionB = await getOrCreateSession(expB.id, switchSubject.id);
+
+  check("★ 换一门实验 → 拿到另一条 session（不是复用旧的）", sessionA.id !== sessionB.id);
+  check("同一门实验再进 → 还是同一条 session（不重复建）", sessionA.id === sessionA2.id);
+  check(
+    "两条 session 各挂各的实验（上下文不会串）",
+    sessionA.experimentId === expA.id && sessionB.experimentId === expB.id,
+  );
+
+  console.log("\n[12] 站内「通知栏」：未读数变化能被前端轮询感知到");
+  const { diffUnread, unreadToastText } = await import("../src/lib/unread-count");
+  const { SCHEDULER_INTERVALS } = await import("../src/server/scheduler");
+  const { REMINDER_LEVELS } = await import("../src/domain/reminder-levels");
+
+  // 复用一个专属被试，避免和 §8 的未读计数串味
+  const watchSubject = await prisma.user.create({
+    data: {
+      phone: `${TAG}9003`,
+      role: "SUBJECT",
+      name: "轮询验收被试",
+      studentVerified: true,
+      creditScore: 100,
+    },
+  });
+  const watchRepo = makeDefaultNotificationRepository();
+
+  const watchBase = await watchRepo.countUnread(watchSubject.id);
+  const firstPoll = diffUnread(null, watchBase);
+  check("★ 首屏轮询（prev=null）不弹 —— 历史未读不算新消息", !firstPoll.notify);
+
+  const watchSlot = await prisma.slot.create({
+    data: {
+      experimentId: published.id,
+      startAt: new Date(now.getTime() + 8 * 60000),
+      endAt: new Date(now.getTime() + 38 * 60000),
+      capacity: 1,
+    },
+  });
+  const watchAppointment = await prisma.appointment.create({
+    data: {
+      experimentId: published.id,
+      slotId: watchSlot.id,
+      subjectId: watchSubject.id,
+      status: "CONFIRMED",
+    },
+  });
+  await watchRepo.createReminder({
+    userId: watchSubject.id,
+    appointmentId: watchAppointment.id,
+    experimentId: published.id,
+    level: "M10",
+    content: "轮询验收：还有 8 分钟开场。",
+    createdAt: now,
+  });
+
+  const watchAfter = await watchRepo.countUnread(watchSubject.id);
+  const secondPoll = diffUnread(watchBase, watchAfter);
+  check("★ 未读数变多 → 该弹 toast", secondPoll.notify && secondPoll.added === 1, `added=${secondPoll.added}`);
+  check("toast 文案带条数", unreadToastText(secondPoll.added).includes("1 条"));
+
+  const thirdPoll = diffUnread(watchAfter, watchAfter);
+  check("数字没变 → 不弹（轮询大多数时候必须安静）", !thirdPoll.notify);
+
+  await watchRepo.markAllRead(watchSubject.id, now);
+  const watchCleared = await watchRepo.countUnread(watchSubject.id);
+  const fourthPoll = diffUnread(watchAfter, watchCleared);
+  check("★ 点「全部已读」后数字变小 → 不弹", !fourthPoll.notify);
+  check("已读后未读归零", watchCleared === 0, `unread=${watchCleared}`);
+
+  // 扫描粒度：间隔必须显著小于最窄提醒窗口，否则窗口和间隔等宽 = 零容错
+  const narrowest = Math.min(...REMINDER_LEVELS.map((s: { aheadMs: number }) => s.aheadMs));
+  check(
+    "★ 提醒扫描间隔比最窄窗口小 5 倍以上（有容错余量）",
+    narrowest / SCHEDULER_INTERVALS.reminders >= 5,
+    `最窄窗口 ${narrowest / 60000} 分钟 / 间隔 ${SCHEDULER_INTERVALS.reminders / 60000} 分钟`,
+  );
+  check(
+    "重型 job 仍是 10 分钟粒度（没被连带拖成 1 分钟）",
+    SCHEDULER_INTERVALS.heavy === 10 * 60000,
   );
 
   await cleanup(TAG);

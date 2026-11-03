@@ -46,11 +46,14 @@ model User {
   appointments Appointment[]
   creditEvents CreditEvent[]
   chatSessions ChatSession[]
+  assistantThreads AssistantThread[]
 
   // 私信：被试发起、主试接收
   threadsAsSubject    DirectThread[] @relation("ThreadSubject")
   threadsAsResearcher DirectThread[] @relation("ThreadResearcher")
   directMessages      DirectMessage[]
+
+  notifications Notification[]
 
   @@index([role])
 }
@@ -124,6 +127,35 @@ model Appointment {
   @@index([experimentId, status])
 }
 
+/// 站内通知。
+///
+/// 提醒类通知由定时任务生成：代码决定「何时、给谁、哪一档」，
+/// 内容由模型生成（失败时用模板兜底）。
+///
+/// `(appointmentId, level)` 唯一 —— 幂等唯一手段。
+/// 不靠「记住发过没有」，靠数据库拒绝重复。
+/// 这样即使服务停了半小时，恢复后补推也不会重复。
+model Notification {
+  id            String @id @default(cuid())
+  userId        String
+  kind          String @default("REMINDER") // NotificationKind
+  /// 提醒档位：H3 / H1 / M10；非提醒类为 null
+  level         String?
+  appointmentId String?
+  experimentId  String?
+  content       String
+  /// 预留投递通道，当前恒为 IN_APP
+  channel       String    @default("IN_APP")
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, level])
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
 model ChatSession {
   id           String @id @default(cuid())
   experimentId String
@@ -137,6 +169,25 @@ model ChatSession {
   subject    User       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
   @@unique([experimentId, subjectId])
+}
+
+// ── 实验助手的跨实验会话（「门厅」）────────────────
+// 与 ChatSession 的分工：
+//   ChatSession    = 一门实验内的排期对话（有 experimentId，有状态机，能下单）
+//   AssistantThread = 还不知道是哪门实验时的找实验对话（只有消息，没有状态机）
+//
+// 为什么不给 ChatSession 的 experimentId 改成可空：那会让「一 session 一实验」的语义被稀释，
+// 老代码里所有 `session.experimentId` 的读取都要重新想一遍——而它们的语义并没有变。
+model AssistantThread {
+  id        String   @id @default(cuid())
+  subjectId String
+  messages  String   @default("[]") // JSON 字符串，只留最近若干条用于回放
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subject User @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId])
 }
 
 model CreditEvent {

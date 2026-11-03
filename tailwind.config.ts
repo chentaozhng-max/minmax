@@ -18,6 +18,7 @@ const config: Config = {
         mist: "var(--mist)",
         warn: "var(--warn)",
         danger: "var(--danger)",
+        "danger-tint": "var(--danger-tint)",
         verify: "var(--verify)",
         "verify-tint": "var(--verify-tint)",
       },

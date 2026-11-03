@@ -8,6 +8,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { makePageQuery } from "@/adapters/db/prisma/page-query";
+import { makeResearcherPageQuery } from "@/adapters/db/prisma/page-query-researcher";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -25,30 +27,21 @@ import { formatDateTimeCN } from "@/lib/time";
  */
 export default async function ResearcherProfilePage() {
   const session = await requirePage("RESEARCHER");
-  const user = await prisma.user.findUnique({ where: { id: session.sub } });
+  const researcherQuery = makeResearcherPageQuery(prisma);
+
+  // 身份卡和仪表盘都只需 session.sub，互不依赖 —— 并发发出去，
+  // 少一次云端往返（这一页原来要串两段）。
+  const [user, dashboard] = await Promise.all([
+    makePageQuery(prisma).findMeProfile(session.sub),
+    researcherQuery.findResearcherDashboard(session.sub, 20),
+  ]);
   if (!user) return null;
+
+  const { events, experimentCount: experiments, publishedCount: published, awaitingCount: awaiting, appealCount: appeals } =
+    dashboard;
 
   const now = new Date();
   const banned = user.bannedUntil && user.bannedUntil.getTime() > now.getTime();
-
-  const [events, experiments, published, awaiting, appeals] = await Promise.all([
-    prisma.creditEvent.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    }),
-    prisma.experiment.count({ where: { researcherId: user.id } }),
-    prisma.experiment.count({ where: { researcherId: user.id, status: "PUBLISHED" } }),
-    prisma.appointment.count({
-      where: {
-        experiment: { researcherId: user.id },
-        status: { in: ["AWAITING_RESEARCHER", "CHECKED_IN"] },
-      },
-    }),
-    prisma.appointment.count({
-      where: { experiment: { researcherId: user.id }, appealStatus: "PENDING" },
-    }),
-  ]);
 
   return (
     <main className="shell tabbar-space">

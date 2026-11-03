@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { makeExperimentPageQuery } from "@/adapters/db/prisma/page-query-experiment";
 import { requirePage } from "@/lib/page-auth";
 import { currentUser } from "@/lib/auth";
 import { checkEligibility } from "@/lib/credit";
@@ -11,6 +12,7 @@ import { SlotGrid } from "@/components/slot-grid";
 import { formatDateTimeCN, formatDayCN, formatDayKey, formatHM } from "@/lib/time";
 import { remainingOf } from "@/server/experiments";
 import { cn } from "@/lib/cn";
+import { Bot, ChevronRight } from "lucide-react";
 import { BookCta } from "./book-cta";
 import { ContactCard } from "./contact-card";
 
@@ -28,10 +30,8 @@ export default async function ExperimentDetailPage({
   const { id } = await params;
   const now = new Date();
 
-  const experiment = await prisma.experiment.findUnique({
-    where: { id },
-    include: { researcher: true, slots: { orderBy: { startAt: "asc" } } },
-  });
+  const query = makeExperimentPageQuery(prisma);
+  const experiment = await query.findExperimentPageDetail(id);
   if (!experiment) notFound();
 
   const user = await currentUser();
@@ -52,27 +52,16 @@ export default async function ExperimentDetailPage({
     : ({ ok: false, reason: "VERIFY" as const, message: "请先登录" });
 
   const mine = user
-    ? await prisma.appointment.findFirst({
-        where: {
-          experimentId: id,
-          subjectId: user.id,
-          status: {
-            in: [
-              "PENDING_SUBJECT_CONFIRM",
-              "AWAITING_RESEARCHER",
-              "CONFIRMED",
-              "CHECKED_IN",
-            ],
-          },
-        },
-        include: { slot: true },
-      })
+    ? await query.findMyAppointment(id, user.id, [
+        "PENDING_SUBJECT_CONFIRM",
+        "AWAITING_RESEARCHER",
+        "CONFIRMED",
+        "CHECKED_IN",
+      ])
     : null;
 
   const researcher = experiment.researcher;
-  const researchCount = await prisma.experiment.count({
-    where: { researcherId: researcher.id, status: "PUBLISHED" },
-  });
+  const researchCount = await query.countPublishedExperiments(researcher.id);
 
   const slotViews = openSlots.map((s) => ({
     id: s.id,
@@ -186,6 +175,7 @@ export default async function ExperimentDetailPage({
             slots={slotViews}
             value={[]}
             readOnly
+            experimentType={experiment.type}
             emptyHint="所有时段都已约满，可以给主试留言问问有没有人取消"
           />
         </div>
@@ -193,6 +183,32 @@ export default async function ExperimentDetailPage({
           点下方「立即预约」，选一个你能来的时段就行。
         </p>
       </section>
+
+      {/* AI 入口 —— 每个实验都留一个，进来就能让助手帮你挑时段。
+          实验已关闭/报名已截止时不显示：这时候进去也约不了，等于给个死路。
+          但资格不符（信誉/认证/禁期）时仍然显示 —— 进去能看到原因，也顺带拿到「去约别的实验」的出口。 */}
+      {!closed && !deadlinePassed ? (
+        <section className="px-4 pb-4">
+          <Link
+            href={`/experiments/${experiment.id}/chat`}
+            className={cn(
+              "flex items-center gap-3 rounded-card border border-moss/25 bg-moss-tint/60 px-3.5 py-3",
+              "active:bg-moss-tint",
+            )}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-moss text-white">
+              <Bot size={18} strokeWidth={2.1} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] font-medium text-ink">让 AI 助手帮我挑时段</span>
+              <span className="mt-0.5 block text-[11px] leading-4 text-ink-soft">
+                说「周三下午有空」，它会从这门实验的时段里给你挑
+              </span>
+            </span>
+            <ChevronRight size={16} className="shrink-0 text-moss/70" strokeWidth={2.2} />
+          </Link>
+        </section>
+      ) : null}
 
       {!eligibility.ok ? (
         <div className="mx-4 mb-4 rounded-[6px] bg-[#f9e9e6] px-3 py-2.5 text-[12px] leading-5 text-danger">
