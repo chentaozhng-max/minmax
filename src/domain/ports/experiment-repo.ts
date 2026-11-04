@@ -28,6 +28,8 @@ export type PublishExperimentInput = {
   /** ONLINE 的实验没有时段 */
   mode: "ONLINE" | "OFFLINE";
   needsQuestionnaire: boolean;
+  /** 线上实验：不设截止时间，signupDeadline 存的是远期哨兵值 */
+  openAnytime: boolean;
   /** 一对一固定 null */
   groupSize: number | null;
   requirements: string | null;

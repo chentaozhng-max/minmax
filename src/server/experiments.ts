@@ -27,6 +27,8 @@ export type CardView = {
   durationMin: number;
   rewardText: string;
   type: ExperimentType;
+  /** ONLINE = 线上实验：没有时段，卡片改成「随时可填」而不是「已约满」 */
+  mode: string;
   groupSize: number | null;
   minCreditScore: number;
   needsVerification: boolean;
@@ -92,8 +94,10 @@ export async function listExperimentCards(params: {
 
   const cards: CardView[] = [];
   for (const experiment of experiments) {
+    const online = experiment.mode === "ONLINE";
     const openSlots = experiment.slots.filter((s) => remainingOf(s) > 0);
-    if (openSlots.length === 0) continue;
+    // 线上实验没有时段，不能拿「有空位」当门槛 —— 否则发布后首页永远看不到它
+    if (!online && openSlots.length === 0) continue;
 
     if (params.date) {
       const target = params.date; // YYYY-MM-DD (Asia/Shanghai)
@@ -126,6 +130,7 @@ export async function listExperimentCards(params: {
       durationMin: experiment.durationMin,
       rewardText: experiment.rewardText,
       type: experiment.type as ExperimentType,
+      mode: experiment.mode,
       groupSize: experiment.groupSize,
       minCreditScore: experiment.minCreditScore,
       needsVerification: experiment.needsVerification,
@@ -183,6 +188,7 @@ export type ResearcherDetailRow = {
   type: string;
   mode: string;
   needsQuestionnaire: boolean;
+  openAnytime: boolean;
   groupSize: number | null;
   requirements: string | null;
   minCreditScore: number;
@@ -220,6 +226,7 @@ export function formatResearcherDetail(experiment: ResearcherDetailRow, now: Dat
     type: experiment.type,
     mode: experiment.mode,
     needsQuestionnaire: experiment.needsQuestionnaire,
+    openAnytime: experiment.openAnytime,
     groupSize: experiment.groupSize,
     requirements: experiment.requirements,
     minCreditScore: experiment.minCreditScore,
@@ -277,10 +284,12 @@ export async function listResearcherExperiments(researcherId: string) {
     title: e.title,
     status: e.status,
     type: e.type,
+    mode: e.mode,
     rewardText: e.rewardText,
     durationMin: e.durationMin,
     location: e.location,
     signupDeadline: e.signupDeadline.toISOString(),
+    openAnytime: e.openAnytime,
     slotCount: e.slots.length,
     bookedCount: e.appointments.filter((a) =>
       OCCUPYING_STATUSES.includes(a.status as Status),

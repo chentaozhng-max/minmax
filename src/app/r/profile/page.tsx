@@ -71,10 +71,11 @@ export default async function ResearcherProfilePage() {
             </Link>
           </div>
 
+          {/* 三个数字都能点：点了直接去看对应的那一批，不用自己在列表里筛 */}
           <div className="mt-3 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
-            <Stat label="发布过" value={experiments} />
-            <Stat label="招募中" value={published} />
-            <Stat label="待我确认" value={awaiting} highlight={awaiting > 0} />
+            <Stat label="发布过" value={experiments} href="/r/experiments" />
+            <Stat label="招募中" value={published} href="/r/experiments?filter=PUBLISHED" />
+            <Stat label="待我确认" value={awaiting} href="/r/schedule" highlight={awaiting > 0} />
           </div>
 
           {banned ? (
@@ -195,21 +196,27 @@ export default async function ResearcherProfilePage() {
 function Stat({
   label,
   value,
+  href,
   highlight,
 }: {
   label: string;
   value: number;
+  href: string;
   highlight?: boolean;
 }) {
   return (
-    <div>
+    <Link
+      href={href}
+      aria-label={`${label} ${value} 个，点击查看`}
+      className="block py-1 active:bg-line/40"
+    >
       <p
         className={`num text-[17px] font-semibold ${highlight ? "text-clay" : "text-ink"}`}
       >
         {value}
       </p>
       <p className="mt-0.5 text-[11px] text-ink-soft">{label}</p>
-    </div>
+    </Link>
   );
 }
 

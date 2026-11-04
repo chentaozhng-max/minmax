@@ -92,7 +92,10 @@ export default async function ExperimentDetailPage({
   }));
 
   const closed = experiment.status !== "PUBLISHED";
-  const deadlinePassed = experiment.signupDeadline.getTime() <= now.getTime();
+  // 「全时段可填写」的线上实验没有截止时间：signupDeadline 是远期哨兵值，
+  // 直接比较虽然也不会截止，但显式排除更不容易被后来的改动带偏
+  const deadlinePassed =
+    !experiment.openAnytime && experiment.signupDeadline.getTime() <= now.getTime();
   const remainingSeats = openSlots.reduce((n, s) => n + remainingOf(s), 0);
 
   // 问卷入口也要受截止时间约束：过了截止还在收答卷，主试的筛选就没意义了
@@ -168,12 +171,17 @@ export default async function ExperimentDetailPage({
         <h3 className="text-[15px] font-semibold text-ink">实验信息</h3>
         <dl className="mt-2.5 space-y-2 text-[13px] leading-5">
           <InfoRow label="地点" value={experiment.location} />
-          <InfoRow label="报名截止" value={formatDateTimeCN(experiment.signupDeadline)} />
-          <InfoRow label={experiment.mode === "ONLINE" ? "参与方式" : "剩余时段"} value={experiment.mode === "ONLINE" ? "填写问卷" : `${openSlots.length} 段`} />
           <InfoRow
-            label="最早可约"
-            value={openSlots[0] ? formatDateTimeCN(openSlots[0].startAt) : "暂无"}
+            label="报名截止"
+            value={experiment.openAnytime ? "全时段可填写" : formatDateTimeCN(experiment.signupDeadline)}
           />
+          <InfoRow label={experiment.mode === "ONLINE" ? "参与方式" : "剩余时段"} value={experiment.mode === "ONLINE" ? "填写问卷" : `${openSlots.length} 段`} />
+          {experiment.mode === "ONLINE" ? null : (
+            <InfoRow
+              label="最早可约"
+              value={openSlots[0] ? formatDateTimeCN(openSlots[0].startAt) : "暂无"}
+            />
+          )}
         </dl>
       </section>
 

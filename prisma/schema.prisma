@@ -72,6 +72,10 @@ model Experiment {
   mode         String @default("OFFLINE") // ExperimentMode
   /// 是否需要先填问卷。线上实验恒为 true；线下由主试勾选
   needsQuestionnaire Boolean @default(false)
+  /// 线上实验选「全时段可填写」：不设截止时间。
+  /// 库里的 signupDeadline 会写一个远期哨兵值（domain 的 OPEN_ANYTIME_DEADLINE），
+  /// 这样所有「未截止」的过滤条件保持一种写法，页面按这个标记改文案即可
+  openAnytime  Boolean @default(false)
   groupSize    Int?
   requirements String?
   minCreditScore Int  @default(0)

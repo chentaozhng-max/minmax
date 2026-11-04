@@ -46,6 +46,8 @@ export const createExperimentSchema = z
     /** 线上实验不排时段，slots 允许为空 */
     mode: z.enum(["ONLINE", "OFFLINE"]).optional(),
     needsQuestionnaire: z.boolean().optional(),
+    /** 线上实验：全时段可填写，不设截止时间（signupDeadline 会被忽略） */
+    openAnytime: z.boolean().optional(),
     groupSize: z.number().int().min(2).max(30).nullable().optional(),
     requirements: z.string().optional(),
     minCreditScore: z.number().int().min(0).max(100),

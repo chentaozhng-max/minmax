@@ -21,10 +21,12 @@ type Row = {
   title: string;
   status: string;
   type: string;
+  mode: string;
   rewardText: string;
   durationMin: number;
   location: string;
   signupDeadline: string;
+  openAnytime: boolean;
   slotCount: number;
   bookedCount: number;
   capacityTotal: number;
@@ -41,11 +43,16 @@ const FILTERS = [
 export function ResearcherExperiments({
   bannedUntil,
   bannedDays,
+  initialFilter,
 }: {
   bannedUntil: string | null;
   bannedDays: number;
+  /** 从「我的」页的统计数字点进来时带的筛选，非法值一律回到「全部」 */
+  initialFilter?: string;
 }) {
-  const [filter, setFilter] = useState("ALL");
+  const [filter, setFilter] = useState(
+    FILTERS.some((f) => f.key === initialFilter) ? (initialFilter as string) : "ALL",
+  );
   const [banOpen, setBanOpen] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ["r-experiments"],
@@ -172,8 +179,16 @@ export function ResearcherExperiments({
 
                 <div className="mt-2 flex items-center justify-between text-[11px] text-ink-soft">
                   <span>
-                    <span className="num">{row.slotCount}</span> 个时段 · 截止{" "}
-                    {formatDateTimeCN(new Date(row.signupDeadline))}
+                    {row.mode === "ONLINE" ? (
+                      <>
+                        线上 · {row.openAnytime ? "全时段可填" : `截止 ${formatDateTimeCN(new Date(row.signupDeadline))}`}
+                      </>
+                    ) : (
+                      <>
+                        <span className="num">{row.slotCount}</span> 个时段 · 截止{" "}
+                        {formatDateTimeCN(new Date(row.signupDeadline))}
+                      </>
+                    )}
                   </span>
                   {row.pendingCount > 0 ? (
                     <span className="num text-clay">{row.pendingCount} 条待处理</span>

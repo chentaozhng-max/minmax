@@ -45,6 +45,21 @@ export type ExperimentDraftInput = {
 export const MAX_GROUP_SIZE = 30;
 
 /**
+ * 「全时段可填写」的截止时间哨兵。
+ *
+ * 线上实验可以选「不固定时间、一直开放」。数据库里 signupDeadline 是非空列，
+ * 搜索/排序/详情页的「已截止」判断都按 `> now` 写 —— 与其把这一列改成可空、
+ * 再去改十几处 SQL，不如写一个远到不会有人等到的时间点，
+ * 让「未截止」这个条件天然成立。**展示层看到 `openAnytime` 时不要再显示这个日期。**
+ */
+export const OPEN_ANYTIME_DEADLINE = new Date("2099-12-31T15:59:59.000Z"); // 2099-12-31 23:59:59 +08:00
+
+/** 这个截止时间是不是「永不到期」的哨兵值 */
+export function isOpenAnytimeDeadline(deadline: Date): boolean {
+  return deadline.getTime() >= OPEN_ANYTIME_DEADLINE.getTime();
+}
+
+/**
  * 单个时段的容量。
  *
  * - 团体实验：等于 groupSize。传进来的 capacity 一律无视 ——

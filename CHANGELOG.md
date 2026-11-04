@@ -21,7 +21,7 @@
 
 **一句话**：发布实验时分成**线上 / 线下**两种形态；线上（或勾选了「需要问卷」的线下）实验，主试可以上传 PDF / Word / Excel 让 Agent 出一份问卷、自己改完发布，被试填完后由 Agent 计分，主试按分数线一键给达标者发私信。**线下实验只有通过问卷的人才能预约。**
 
-**升级影响**：数据库新增 3 张表 + 2 个字段（`Experiment.mode` / `Experiment.needsQuestionnaire`）。旧数据默认 `mode=OFFLINE`、`needsQuestionnaire=false`，行为与 v1.3.1 完全一致，不需要迁移脚本。
+**升级影响**：数据库新增 3 张表 + 3 个字段（`Experiment.mode` / `Experiment.needsQuestionnaire` / `Experiment.openAnytime`）。旧数据默认 `mode=OFFLINE`、`needsQuestionnaire=false`、`openAnytime=false`，行为与 v1.3.1 完全一致，不需要迁移脚本。
 
 ### 一条链路看懂（线上）
 
@@ -69,9 +69,19 @@
 5. **`hasPassed` 在没建问卷时返回 `true`**。不能因为主试没做问卷把所有人拦死；实验关掉 `needsQuestionnaire` 时也不查。
 6. **线上实验详情页不显示时段块与「让 AI 帮你挑时段」**，因为线上没有时段可挑。
 
+### 验收后的修正（同属 1.4.0，还没发版就一起改掉）
+
+1. **「我的」页三个统计数字可以点**：发布过 → `/r/experiments`，招募中 → `/r/experiments?filter=PUBLISHED`，待我确认 → `/r/schedule`。列表页新增 `initialFilter`，非法筛选值回落到「全部」。
+2. **线上实验第 2 步多了「全时段都可填写」选项**（默认选中）：不设截止时间，问卷一直开放；选「设定截止时间」才显示时间输入框，第 1 步不再重复显示这一项。线下实验不认这个开关——线下没有截止时间，时段会永远挂着。
+   - 落库用 `Experiment.openAnytime` 标记；`signupDeadline` 写 `OPEN_ANYTIME_DEADLINE`（2099-12-31 的哨兵值），这样搜索的 `signupDeadline > now`、详情页的「已截止」判断都不用改写法。
+   - **展示层看 `openAnytime` 决定文案**，别把 2099 直接印出来：被试详情页 / 主试详情 / 实验列表 / 编辑页都按这个判断。
+3. **上传卡片文案**「让 AI 出题」→「让 AI 填写题目」，按钮「生成题目」→「填写题目」。
+4. **保存并发布问卷后自动回到「我的实验」**：点「保存并发布问卷」时，若实验还没上架会**顺手把它上架**（线上实验的问卷就是实验），然后跳 `/r/experiments`；上架失败则留在原页提示原因，按钮还在可以重试。保存草稿不跳，避免打断；编辑器底部常驻「返回实验详情」。
+5. **修掉一个会让线上实验彻底没人看得到的 bug**：首页列表原来有 `openSlots.length === 0 → continue`，「没有可约时段就不展示」，而线上实验天生没有时段——发布完首页永远看不到。现在线上实验跳过这条门槛，卡片右下角显示「随时可填」而不是「已约满」，chip 上标「线上 · 随时可填」。详情页的「最早可约」对线上实验也去掉了。
+
 ### 验证（本次实测）
 
-- `npm test` → **55 文件 / 634 用例**（新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/book-slot.test.ts` 追加 3 例门槛用例）
+- `npm test` → **55 文件 / 637 用例**（新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/book-slot.test.ts` 追加 3 例门槛用例、`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
 - `npm run lint:layers` → 225 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功

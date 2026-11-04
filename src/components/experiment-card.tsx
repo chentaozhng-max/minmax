@@ -54,6 +54,9 @@ export function ExperimentCard({ card }: { card: CardView }) {
             {card.lowCreditResearcher ? (
               <span className="chip bg-[#f1f2ee] text-ink-soft">主试信誉较低</span>
             ) : null}
+            {card.mode === "ONLINE" ? (
+              <span className="chip bg-moss-tint text-moss">线上 · 随时可填</span>
+            ) : null}
             {next ? (
               <span className="chip bg-mist text-ink-soft">
                 最近 <span className="num">{formatDateTimeCN(next)}</span>
@@ -66,7 +69,9 @@ export function ExperimentCard({ card }: { card: CardView }) {
               <span className="chip bg-[#f8efdd] text-warn">信誉 ≥ {card.minCreditScore}</span>
             ) : null}
           </div>
-          {card.remainingSeats > 0 ? (
+          {card.mode === "ONLINE" ? (
+            <span className="shrink-0 text-[12px] font-medium text-moss">随时可填</span>
+          ) : card.remainingSeats > 0 ? (
             <span className="num shrink-0 text-[12px] font-medium text-moss">
               剩 {card.remainingSeats} 位
             </span>

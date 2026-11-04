@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { ArrowDown, ArrowUp, FileUp, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ export function QuestionnaireEditor({
   const [experimentStatus, setExperimentStatus] = useState(experiment.status);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   function update(index: number, patch: Partial<EditableQuestion>) {
     setQuestions((prev) => prev.map((q, i) => (i === index ? { ...q, ...patch } : q)));
@@ -132,7 +134,7 @@ export function QuestionnaireEditor({
             ? `已读取 ${data.chars} 个字，生成 ${draft.questions.length} 道题，请逐题核对。`
             : `已生成 ${draft.questions.length} 道题。`),
       );
-      toast(data.mode === "llm" ? "已用 AI 生成题目" : "已按规则生成题目");
+      toast(data.mode === "llm" ? "已用 AI 填写题目" : "已按规则填写题目");
     } catch (error) {
       toast(error instanceof Error ? error.message : "生成失败", "error");
     } finally {
@@ -169,7 +171,28 @@ export function QuestionnaireEditor({
         payload,
       );
       setStatus(data.status);
-      toast(publish ? "问卷已发布" : "已保存");
+      // 发布完就是「这件事做完了」，停在原地只会让人怀疑没成功。
+      // 保存草稿不跳：还在改，跳走会打断
+      if (publish) {
+        // 线上实验的问卷就是实验本身，问卷发布完实验也该上线了；
+        // 让人回去再点一次「发布实验」容易漏。上架失败就留在原地，按钮还在
+        if (experimentStatus !== "PUBLISHED") {
+          try {
+            await postJson(`/api/r/experiments/${experiment.id}/publish`, { publish: true });
+            setExperimentStatus("PUBLISHED");
+          } catch (error) {
+            toast(
+              `问卷已发布，但实验上架没成功：${error instanceof Error ? error.message : "请稍后重试"}`,
+              "error",
+            );
+            return;
+          }
+        }
+        toast("问卷已发布，实验已上线");
+        router.push("/r/experiments");
+        return;
+      }
+      toast("已保存");
     } catch (error) {
       toast(error instanceof Error ? error.message : "保存失败", "error");
     } finally {
@@ -221,7 +244,7 @@ export function QuestionnaireEditor({
       <div className="mt-3 rounded-card border border-moss/25 bg-moss-tint/40 p-4">
         <div className="flex items-center gap-1.5">
           <FileUp size={15} className="text-moss" />
-          <p className="text-[13px] font-medium text-ink">上传实验材料，让 AI 出题</p>
+          <p className="text-[13px] font-medium text-ink">上传实验材料，让 AI 填写题目</p>
         </div>
         <p className="mt-1 text-[11px] leading-5 text-ink-soft">
           支持 PDF / Word(.docx) / Excel / TXT，10 MB 以内。没有文件也可以写一句要求。
@@ -240,7 +263,7 @@ export function QuestionnaireEditor({
           maxLength={500}
         />
         <Button className="mt-2" size="sm" block disabled={importing} onClick={importFile}>
-          {importing ? "正在读文件并生成…" : "生成题目"}
+          {importing ? "正在读文件并填写…" : "填写题目"}
         </Button>
         {notice ? <p className="mt-2 text-[11px] leading-5 text-moss">{notice}</p> : null}
       </div>
@@ -261,7 +284,7 @@ export function QuestionnaireEditor({
 
         {questions.length === 0 ? (
           <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-[12px] text-ink-soft">
-            还没有题目。上传文件生成，或点「加一题」手动写。
+            还没有题目。上传材料让 AI 填写，或点「加一题」手动写。
           </p>
         ) : null}
 
@@ -423,6 +446,14 @@ export function QuestionnaireEditor({
           {saving ? "处理中…" : "保存并发布问卷"}
         </Button>
       </div>
+
+      {/* 发布后已经没有「下一步」了，给一条随时能走的路 */}
+      <Link
+        href={`/r/experiments/${experiment.id}`}
+        className="mt-3 block text-center text-[13px] text-moss"
+      >
+        返回实验详情
+      </Link>
     </section>
   );
 }

@@ -39,6 +39,7 @@ type RawExperimentDetail = {
   type: string;
   mode: string;
   needsQuestionnaire: boolean;
+  openAnytime: boolean;
   groupSize: number | null;
   location: string;
   durationMin: number;
@@ -81,6 +82,7 @@ export function makeExperimentPageQuery(db: PageQueryClientLike): ExperimentPage
         type: raw.type as ExperimentType,
         mode: raw.mode === "ONLINE" ? "ONLINE" : "OFFLINE",
         needsQuestionnaire: raw.needsQuestionnaire,
+        openAnytime: raw.openAnytime,
         groupSize: raw.groupSize,
         location: raw.location,
         durationMin: raw.durationMin,

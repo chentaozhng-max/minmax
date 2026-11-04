@@ -25,6 +25,7 @@ type Detail = {
   requirements: string | null;
   minCreditScore: number;
   needsVerification: boolean;
+  openAnytime: boolean;
   signupDeadline: string;
   status: string;
   slots: {
@@ -215,9 +216,17 @@ export function EditExperimentForm({ experimentId }: { experimentId: string }) {
               onChange={(e) => setMinCreditScore(e.target.value.replace(/\D/g, "").slice(0, 3))}
             />
           </Field>
-          <Field label="报名截止" hint="必须早于最早时段">
-            <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-          </Field>
+          {data.openAnytime ? (
+            <Field label="报名截止" hint="线上实验，不设截止">
+              <p className="rounded-[6px] bg-mist px-3 py-2 text-[12px] text-ink-soft">
+                全时段可填写，问卷一直开放
+              </p>
+            </Field>
+          ) : (
+            <Field label="报名截止" hint="必须早于最早时段">
+              <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            </Field>
+          )}
           <label className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5">
             <span>
               <span className="block text-[13px] text-ink">仅限已认证学生报名</span>

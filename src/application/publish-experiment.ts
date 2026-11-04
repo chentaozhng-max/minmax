@@ -15,6 +15,7 @@ import {
   assertExperimentDraft,
   capacityForSlot,
   MAX_GROUP_SIZE,
+  OPEN_ANYTIME_DEADLINE,
   publisherBanRejection,
 } from "@/domain/experiment-rules";
 import { prunePastSlots } from "@/domain/experiment-draft";
@@ -36,6 +37,8 @@ export type PublishExperimentInput = {
   mode?: "ONLINE" | "OFFLINE";
   /** 是否需要先填问卷。线上恒为 true */
   needsQuestionnaire?: boolean;
+  /** 线上实验：全时段可填写，不设截止时间 */
+  openAnytime?: boolean;
   groupSize?: number | null;
   requirements?: string | null;
   minCreditScore: number;
@@ -74,6 +77,11 @@ export async function publishExperiment(
   if (banned) throw new ApiError(banned.status, banned.message);
 
   const deadline = new Date(input.signupDeadline);
+
+  // 「全时段可填写」只对线上实验生效：线下实验不设截止时间，时段会一直挂着，
+  // 主试自己也说不清哪天该关。线上没有时段，截止时间只是入口的开关。
+  const openAnytime = mode === "ONLINE" && Boolean(input.openAnytime);
+  const effectiveDeadline = openAnytime ? OPEN_ANYTIME_DEADLINE : deadline;
   const groupSize = input.type === "GROUP" ? (input.groupSize ?? 2) : null;
 
   // 时段先按时间排序，让领域层拿到的顺序稳定（重叠判定自己也会再排一次）。
@@ -98,7 +106,7 @@ export async function publishExperiment(
     title: input.title,
     type: input.type,
     groupSize,
-    signupDeadline: deadline,
+    signupDeadline: effectiveDeadline,
     slots: rawSlots,
     now,
     mode,
@@ -124,11 +132,12 @@ export async function publishExperiment(
     type: input.type,
     mode,
     needsQuestionnaire,
+    openAnytime,
     groupSize,
     requirements: input.requirements ?? null,
     minCreditScore: input.minCreditScore,
     needsVerification: input.needsVerification,
-    signupDeadline: deadline,
+    signupDeadline: effectiveDeadline,
     status,
     slots,
   });

@@ -113,6 +113,8 @@ export type ExperimentPageDetail = {
   mode: "ONLINE" | "OFFLINE";
   /** 需要先填问卷，且通过筛选后才能预约 */
   needsQuestionnaire: boolean;
+  /** 线上实验选了「全时段可填写」：没有截止时间，signupDeadline 是远期哨兵值 */
+  openAnytime: boolean;
   groupSize: number | null;
   location: string;
   durationMin: number;

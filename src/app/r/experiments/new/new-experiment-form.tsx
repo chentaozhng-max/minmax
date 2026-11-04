@@ -23,6 +23,7 @@ import {
   suggestSignupDeadline,
   type DraftIssue,
 } from "@/domain/experiment-draft";
+import { OPEN_ANYTIME_DEADLINE } from "@/domain/experiment-rules";
 
 /**
  * 发布实验。
@@ -66,6 +67,8 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
   const [mode, setMode] = useState<"OFFLINE" | "ONLINE">("OFFLINE");
   /** 线下实验也可以要求先填问卷（用于筛选被试） */
   const [needsQuestionnaire, setNeedsQuestionnaire] = useState(false);
+  /** 线上实验：全时段可填写，不设截止时间（默认，问卷一直开放） */
+  const [openAnytime, setOpenAnytime] = useState(true);
   const [groupSize, setGroupSize] = useState("3");
   const [requirements, setRequirements] = useState("");
   const [minCreditScore, setMinCreditScore] = useState("0");
@@ -173,17 +176,21 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
     [title, description, location, durationMin, rewardYuan, type, groupSize, requirements, minCreditScore, needsVerification, slots],
   );
 
+  // 线上选了「全时段可填写」就没有截止时间这回事，用远期哨兵让体检里的
+  // 「截止必须晚于现在」这条自然通过 —— 与发布接口用的是同一个常量
+  const openEnded = mode === "ONLINE" && openAnytime;
+
   // 第 3 步的体检：和发布接口、发布助手用的是同一份规则
   const issues = useMemo(
     () =>
       reviewExperimentDraft(formDraft, {
         now: new Date(nowIso),
         // 截止时间只有手填表单知道，助手草稿不带，所以单独传
-        signupDeadline: new Date(deadlineMs),
+        signupDeadline: openEnded ? OPEN_ANYTIME_DEADLINE : new Date(deadlineMs),
         // 线上实验不排时段，体检里跳过与时段相关的三条
         mode,
       }),
-    [formDraft, nowIso, deadlineMs, mode],
+    [formDraft, nowIso, deadlineMs, mode, openEnded],
   );
   const blocking = issues.filter((i) => i.level === "block");
 
@@ -209,6 +216,10 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
     if (step === 2) {
       // 线上实验没有时段这一步，直接进确认
       if (mode === "ONLINE") {
+        // 不设截止时间就不用验；设了就得是个还没到的时刻
+        if (!openAnytime && (Number.isNaN(deadlineMs) || deadlineMs <= nowMs)) {
+          return toast("截止时间要么填一个还没到的时刻，要么选「全时段可填写」", "error");
+        }
         setStep(3);
         return;
       }
@@ -245,11 +256,14 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         type,
         mode,
         needsQuestionnaire: needQuestionnaire,
+        openAnytime: openEnded,
         groupSize: type === "GROUP" ? Number(groupSize) : null,
         requirements: requirements.trim() || undefined,
         minCreditScore: Number(minCreditScore),
         needsVerification,
-        signupDeadline: new Date(`${deadline}:00+08:00`).toISOString(),
+        signupDeadline: openEnded
+          ? OPEN_ANYTIME_DEADLINE.toISOString()
+          : new Date(`${deadline}:00+08:00`).toISOString(),
         slots:
           mode === "ONLINE"
             ? []
@@ -482,9 +496,12 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                 onChange={(e) => setMinCreditScore(e.target.value.replace(/\D/g, "").slice(0, 3))}
               />
             </Field>
-            <Field label="报名截止" hint="必须早于最早时段">
-              <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-            </Field>
+            {/* 线上实验的开放时间在第 2 步选，这里只管线下 —— 免得两处填同一个值 */}
+            {mode === "OFFLINE" ? (
+              <Field label="报名截止" hint="必须早于最早时段">
+                <Input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              </Field>
+            ) : null}
 
             <label className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5">
               <span>
@@ -503,14 +520,80 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
 
         {step === 2 ? (
           mode === "ONLINE" ? (
-            <div className="rounded-card border border-line bg-surface p-4">
-              <h3 className="text-[15px] font-medium text-ink">线上实验不需要排时段</h3>
-              <p className="mt-2 text-[12px] leading-6 text-ink-soft">
-                被试在实验详情页直接填写问卷，提交即完成。你可以在问卷里设置通过线，
-                决定哪些人进入后续环节（比如发消息邀请他们参加第二轮）。
-              </p>
-              <p className="mt-2 text-[12px] leading-6 text-ink-soft">
-                下一步会先保存成草稿，然后进入问卷编辑器。做好问卷并发布后，实验才会出现在被试的列表里。
+            <div className="space-y-2.5">
+              <div>
+                <h3 className="section-title mb-1.5">问卷开放时间</h3>
+                <p className="mb-2 text-[11px] leading-4 text-ink-soft">
+                  线上实验没有时段可排：被试在详情页直接填问卷，提交即完成。
+                  你可以在问卷里设通过线，决定谁进入后续环节。
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                {(
+                  [
+                    {
+                      key: true,
+                      label: "全时段都可填写",
+                      hint: "不固定时间，随时能填。实验一直挂着，直到你手动关闭",
+                    },
+                    {
+                      key: false,
+                      label: "设定截止时间",
+                      hint: "到点自动停止收集，已经提交的答卷不受影响",
+                    },
+                  ]
+                ).map((item) => (
+                  <button
+                    key={String(item.key)}
+                    type="button"
+                    onClick={() => setOpenAnytime(item.key)}
+                    className={cn(
+                      "flex items-start gap-2 rounded-[10px] border px-3 py-2.5 text-left",
+                      openAnytime === item.key ? "border-moss bg-moss-tint" : "border-line bg-surface",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                        openAnytime === item.key ? "border-moss bg-moss" : "border-line bg-surface",
+                      )}
+                    >
+                      {openAnytime === item.key ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      ) : null}
+                    </span>
+                    <span className="min-w-0">
+                      <span
+                        className={cn(
+                          "block text-[13px] font-medium",
+                          openAnytime === item.key ? "text-moss" : "text-ink",
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-5 text-ink-soft">
+                        {item.hint}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {!openAnytime ? (
+                <div className="rounded-card border border-line bg-surface p-4">
+                  <Field label="报名截止" hint="必须晚于现在">
+                    <Input
+                      type="datetime-local"
+                      value={deadline}
+                      onChange={(e) => setDeadline(e.target.value)}
+                    />
+                  </Field>
+                </div>
+              ) : null}
+
+              <p className="px-1 text-[11px] leading-5 text-ink-soft">
+                下一步会先存成草稿，然后进问卷编辑器。问卷发布后实验才会出现在被试的列表里。
               </p>
             </div>
           ) : (
@@ -598,8 +681,16 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
               </p>
               <div className="mt-2 space-y-1 text-[12px] text-ink-soft">
                 <p>
-                  报名截止：
-                  <span className="num text-ink">{formatDateTimeCN(new Date(deadlineMs))}</span>
+                  {openEnded ? (
+                    <>
+                      开放时间：<span className="text-ink">全时段可填写</span>
+                    </>
+                  ) : (
+                    <>
+                      报名截止：
+                      <span className="num text-ink">{formatDateTimeCN(new Date(deadlineMs))}</span>
+                    </>
+                  )}
                 </p>
                 <p>
                   信誉门槛 <span className="num text-ink">{minCreditScore}</span> ·{" "}

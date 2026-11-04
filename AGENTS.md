@@ -259,7 +259,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 6 条
+#### 问卷链路（v1.4）—— 改这块先读这 7 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -273,6 +273,11 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
    `QuestionnaireRepository.hasPassed` 在**没有问卷**时返回 `true`（否则没做问卷的实验谁都约不了）。
 6. **别在页面里写 `prisma.`**：问卷相关的读取都在 `adapters/db/prisma/experiment-brief-repo.ts`
    与 `questionnaire-repo.ts`，页面通过 `server/questionnaire-service.ts` / `server/experiment-state.ts` 取。
+7. **线上实验可以「全时段可填写」**（`Experiment.openAnytime`）：没有截止时间，
+   `signupDeadline` 被写成一个远期哨兵值 `OPEN_ANYTIME_DEADLINE`（2099-12-31，定义在
+   `domain/experiment-rules.ts`）。**任何展示截止时间的地方都要先看 `openAnytime`**，
+   否则会把 2099 印给用户；判断「是否已截止」同理（`page.tsx` 里是 `!openAnytime && deadline <= now`）。
+   线下实验忽略这个开关——线下没截止时间，时段会永远挂着。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -306,7 +311,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    55 个 Vitest 文件 / 634 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    55 个 Vitest 文件 / 637 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -373,7 +378,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`634 tests passed`／`✅ check-layers: 225 个文件通过（L1–L7）`／
+**验收判据是输出**：`637 tests passed`／`✅ check-layers: 225 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

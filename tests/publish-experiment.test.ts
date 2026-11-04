@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { publishExperiment, type PublishExperimentInput } from "@/application/publish-experiment";
+import { OPEN_ANYTIME_DEADLINE } from "@/domain/experiment-rules";
 import type {
   ExperimentPublishRepository,
   PublishExperimentInput as RepoInput,
@@ -183,5 +184,39 @@ describe("publishExperiment —— 已经开始的时段", () => {
         deps(repo),
       ),
     ).rejects.toThrow("所有时段都已经开始了");
+  });
+});
+
+describe("publishExperiment —— 线上实验「全时段可填写」", () => {
+  it("勾了 openAnytime：截止时间写成远期哨兵，问卷标记为必需", async () => {
+    const { repo, calls } = makeRepo();
+    await publishExperiment(
+      input({ mode: "ONLINE", openAnytime: true, slots: [], type: "INDIVIDUAL", groupSize: null }),
+      deps(repo),
+    );
+
+    expect(calls[0].openAnytime).toBe(true);
+    expect(calls[0].needsQuestionnaire).toBe(true);
+    expect(calls[0].signupDeadline.getTime()).toBe(OPEN_ANYTIME_DEADLINE.getTime());
+  });
+
+  it("线上没勾：按传入的截止时间存，不写哨兵", async () => {
+    const { repo, calls } = makeRepo();
+    const deadline = day(3).toISOString();
+    await publishExperiment(
+      input({ mode: "ONLINE", openAnytime: false, signupDeadline: deadline, slots: [] }),
+      deps(repo),
+    );
+
+    expect(calls[0].openAnytime).toBe(false);
+    expect(calls[0].signupDeadline.toISOString()).toBe(new Date(deadline).toISOString());
+  });
+
+  it("线下勾了也不认：线下实验必须有真的截止时间", async () => {
+    const { repo, calls } = makeRepo();
+    await publishExperiment(input({ mode: "OFFLINE", openAnytime: true }), deps(repo));
+
+    expect(calls[0].openAnytime).toBe(false);
+    expect(calls[0].signupDeadline.getTime()).toBe(new Date(input().signupDeadline).getTime());
   });
 });
