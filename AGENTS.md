@@ -23,6 +23,10 @@
 外加一个 **Agent 助手**：能按自然语言条件（「周三下午」「别太久」「奖励高的」）从全部实验里
 筛出候选；也能在单门实验里帮着挑时段。
 
+发布实验时可选**线上 / 线下**：线上实验不排时段，主试上传 PDF / Word / Excel 让 Agent 出一份
+筛选问卷（也能自己改），被试填完由 Agent 计分，主试按分数线给达标者发私信；线下实验也可是
+「先填问卷、通过了才能预约」。
+
 ```bash
 npm install && npm run setup && npm run dev     # → http://localhost:3000
 ```
@@ -183,6 +187,7 @@ prisma/
 | `reminder-levels.ts` | 提醒三档规则（提前多久、文案档位） |
 | `search-criteria.ts` | 助手搜索的条件归一（「周三下午」→ 时间窗）+ 排序 |
 | `assistant-brief.ts` | 助手总览的撞车判定 |
+| `questionnaire.ts` | 问卷规则：归一化 / 发布体检 / 规则版拆题 / 答案校验 / `passState` `selectQualified` |
 | `ports/` | **端口定义：接口只能写在这里**（清单见第 4.2 节） |
 
 ### src/application/ — 应用层（编排，不写业务判断）
@@ -195,6 +200,9 @@ prisma/
 | `export-schedule.ts` | 主试日程 CSV 构建（BOM / CRLF / RFC4180） |
 | `assistant-overview.ts` | 助手总览：我的安排 + 撞车 |
 | `search-experiments.ts` | 跨实验搜索：资格过滤 + 排序 + 「被筛掉的要告知」 |
+| `submit-questionnaire.ts` | 被试提交答卷（重填覆盖 + 清空旧分数） |
+| `score-questionnaire.ts` | 批量计分，计分器由调用方注入 |
+| `invite-qualified.ts` | 按分数线挑人 + 逐条发通知，单条失败只计数不回滚 |
 
 ### src/adapters/ — 适配层（唯一允许碰外部世界）
 
@@ -246,7 +254,26 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `credit.ts` | 信誉分落库 |
 | `scheduler.ts` | 定时任务（提醒 1min / 重活 10min / 兜底 1h） |
 | `dm.ts` `dm-page.ts` `mail.ts` | 私信、邮件 |
+| `questionnaire-agent.ts` | 三个模型动作：出题 / 计分 / 建议分数线，**三个都有降级** |
+| `questionnaire-service.ts` | 问卷编排 + 归属校验（页面和路由都只调它） |
+| `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
+
+#### 问卷链路（v1.4）—— 改这块先读这 6 条
+
+1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
+   `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
+2. **需要问卷就不能先上架**：上下架接口检查 `needsQuestionnaire && questionnaire.status !== "PUBLISHED"`，
+   所以发布页的「发布实验」按钮在问卷没发布时是禁用的。
+3. **上传接口不落库**：`POST /api/r/experiments/[id]/questionnaire/import` 只返回草稿，
+   主试在编辑器里改完再 `POST .../questionnaire` 保存。解析错不会污染已有问卷。
+4. **计分失败不阻断提交**：`score=null` → 后台显示「未算分」，主试点「重算」再走一遍。
+   **不要让提交接口因为模型不可用而报错**。
+5. **报名门槛在 `application/book-slot.ts`**：`deps.questionnairePass` 可选，没注入按「不通过」处理；
+   `QuestionnaireRepository.hasPassed` 在**没有问卷**时返回 `true`（否则没做问卷的实验谁都约不了）。
+6. **别在页面里写 `prisma.`**：问卷相关的读取都在 `adapters/db/prisma/experiment-brief-repo.ts`
+   与 `questionnaire-repo.ts`，页面通过 `server/questionnaire-service.ts` / `server/experiment-state.ts` 取。
+
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
 
@@ -256,7 +283,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 - **转发壳**：`domain.ts` `credit.ts` `matching.ts` `reward.ts` —— 真身都在 `@/domain/`。
   保留是为了 32 个调用方不用改 import。**新代码请直接 import `@/domain/...`。**
 
-### src/app/ — 页面与 API（26 个 page / 34 个 route handler）
+### src/app/ — 页面与 API（29 个 page / 43 个 route handler）
 
 ```
 page.tsx                  首页：搜索 + 筛选 + 实验卡片流
@@ -269,6 +296,9 @@ me/                       个人中心 / 信誉明细 / 认证 / notifications/ 
 onboarding/               首次完善资料（可跳过）
 r/                        主试端：experiments 列表·新建·详情·编辑 / schedule 日程总表
                           / appeals / messages / profile / verify
+                          experiments/[id]/questionnaire（问卷编辑器）
+                          experiments/[id]/responses（答卷后台）
+experiments/[id]/questionnaire  被试填问卷（提交即计分）
 researchers/[id]/         主试主页（被试视角）
 api/                      全部服务端校验与业务入口
 ```
@@ -276,7 +306,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    54 个 Vitest 文件 / 591 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    55 个 Vitest 文件 / 634 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -313,6 +343,8 @@ tools 753 / server 2084 / app 7625 / lib 654 / components 2227。
 | `ExperimentSearchPort` | `ports/experiment-search.ts` | `db/prisma/experiment-search` | `application/search-experiments` |
 | `DirectMessageRepository` | `ports/messaging.ts` | `db/prisma/direct-message-*` | `server/dm` `server/dm-page` |
 | `NotificationRepository` | `ports/notification-repo.ts` | `db/prisma/notification-repo` | `application/send-reminders` |
+| `QuestionnaireRepository` | `ports/questionnaire.ts` | `db/prisma/questionnaire-repo` | `application/{submit,score,invite}-*` `server/questionnaire-service` |
+| `NoticePort` | `ports/notice.ts` | `db/prisma/notice-repo` | `application/invite-qualified` |
 
 **加新端口的三步**：① 先在 `ports/` 写接口 ② 再在 `adapters/db/prisma/` 写实现
 ③ 最后在 `application/` 或 `server/` 里接。顺序反了就会在用例里 `new PrismaClient()`。
@@ -341,7 +373,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`591 tests passed`／`✅ check-layers: 197 个文件通过（L1–L7）`／
+**验收判据是输出**：`634 tests passed`／`✅ check-layers: 225 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

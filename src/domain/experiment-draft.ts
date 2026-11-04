@@ -398,8 +398,9 @@ export function normalizeExperimentDraft(
  */
 export function reviewExperimentDraft(
   draft: ExperimentDraft,
-  opts: { now?: Date; signupDeadline?: string | Date | null } = {},
+  opts: { now?: Date; signupDeadline?: string | Date | null; mode?: "ONLINE" | "OFFLINE" } = {},
 ): DraftIssue[] {
+  const online = opts.mode === "ONLINE";
   const issues: DraftIssue[] = [];
   const push = (field: DraftIssueField, level: DraftIssue["level"], message: string) =>
     issues.push({ field, level, message });
@@ -440,7 +441,7 @@ export function reviewExperimentDraft(
     push("requirements", "warn", "参加要求偏长，建议压到 300 字以内");
   }
 
-  if (draft.slots.length === 0) {
+  if (!online && draft.slots.length === 0) {
     push("slots", "block", "还没有时段，至少加一个");
   }
 
@@ -460,21 +461,23 @@ export function reviewExperimentDraft(
       push("signupDeadline", "block", "报名截止时间格式不正确");
     } else if (deadline.getTime() <= now) {
       push("signupDeadline", "block", "报名截止时间必须晚于现在");
-    } else if (firstUpcoming && deadline.getTime() >= new Date(firstUpcoming.startAt).getTime()) {
+    } else if (!online && firstUpcoming && deadline.getTime() >= new Date(firstUpcoming.startAt).getTime()) {
       push("signupDeadline", "block", "报名截止时间必须早于最早时段的开始时间");
     }
   }
 
-  for (let i = 1; i < sorted.length; i += 1) {
-    const start = new Date(sorted[i].startAt).getTime();
-    if (start < new Date(sorted[i - 1].endAt).getTime()) {
-      push("slots", "block", "有两个时段重叠了，发布会被拒绝");
+  if (!online) {
+    for (let i = 1; i < sorted.length; i += 1) {
+      const start = new Date(sorted[i].startAt).getTime();
+      if (start < new Date(sorted[i - 1].endAt).getTime()) {
+        push("slots", "block", "有两个时段重叠了，发布会被拒绝");
+      }
     }
-  }
-  if (sorted.length > 0 && past === sorted.length) {
-    push("slots", "block", "所有时段都已经开始了，回上一步重新排");
-  } else if (past > 0) {
-    push("slots", "warn", `有 ${past} 个时段已经开始，发布时会被忽略`);
+    if (sorted.length > 0 && past === sorted.length) {
+      push("slots", "block", "所有时段都已经开始了，回上一步重新排");
+    } else if (past > 0) {
+      push("slots", "warn", `有 ${past} 个时段已经开始，发布时会被忽略`);
+    }
   }
 
   return issues;

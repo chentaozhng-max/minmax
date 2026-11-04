@@ -43,13 +43,20 @@ export const createExperimentSchema = z
     durationMin: z.number().int().min(5).max(480),
     rewardText: z.string().regex(/^¥\d{1,4}$/, "奖励金额请填 1–9999 元的数字"),
     type: z.enum(["INDIVIDUAL", "GROUP"]),
+    /** 线上实验不排时段，slots 允许为空 */
+    mode: z.enum(["ONLINE", "OFFLINE"]).optional(),
+    needsQuestionnaire: z.boolean().optional(),
     groupSize: z.number().int().min(2).max(30).nullable().optional(),
     requirements: z.string().optional(),
     minCreditScore: z.number().int().min(0).max(100),
     needsVerification: z.boolean(),
     signupDeadline: z.string(),
-    slots: z.array(slotInputSchema).min(1, "至少需要一个时段"),
+    slots: z.array(slotInputSchema),
     publish: z.boolean().optional(),
+  })
+  .refine((v) => v.mode === "ONLINE" || v.slots.length >= 1, {
+    message: "线下实验至少需要一个时段",
+    path: ["slots"],
   })
   .refine((v) => v.type !== "GROUP" || (v.groupSize ?? 0) >= 2, {
     message: "团体实验必须填写团体人数（≥2）",
@@ -95,4 +102,48 @@ export const publishDraftRequestSchema = z.object({
     )
     .max(8, "历史消息太多")
     .optional(),
+});
+
+/* ── 问卷 ───────────────────────────────────── */
+
+const questionInputSchema = z.object({
+  type: z.enum(["SINGLE", "MULTI", "SCALE", "TEXT"]),
+  title: z.string().trim().min(1, "题干不能为空").max(200),
+  required: z.boolean().optional(),
+  options: z.array(z.string().max(80)).max(10).optional(),
+  scaleMin: z.number().int().min(0).max(10).nullable().optional(),
+  scaleMax: z.number().int().min(2).max(10).nullable().optional(),
+});
+
+export const saveQuestionnaireSchema = z.object({
+  title: z.string().trim().min(1, "问卷需要一个标题").max(120),
+  intro: z.string().max(1000).optional(),
+  questions: z.array(questionInputSchema).max(40),
+  scoringRule: z.string().max(2000).nullable().optional(),
+  passScore: z.number().int().min(0).max(100).nullable().optional(),
+  sourceText: z.string().max(200_000).nullable().optional(),
+  publish: z.boolean().optional(),
+});
+
+export const publishQuestionnaireSchema = z.object({
+  publish: z.boolean(),
+});
+
+/** 答案：单选/填空是字符串，多选是字符串数组，量表是数字 */
+export const submitQuestionnaireSchema = z.object({
+  answers: z.record(z.union([z.string().max(5000), z.number(), z.array(z.string().max(80))])),
+});
+
+export const inviteQualifiedSchema = z.object({
+  passScore: z.number().int().min(0, "分数线 0–100").max(100, "分数线 0–100").nullable(),
+  message: z.string().max(500).nullable().optional(),
+});
+
+export const suggestThresholdSchema = z.object({
+  goal: z.string().trim().min(1, "说一句你的筛选要求").max(500),
+});
+
+export const generateQuestionnaireSchema = z.object({
+  brief: z.string().max(2000).optional(),
+  text: z.string().max(120_000).optional(),
 });

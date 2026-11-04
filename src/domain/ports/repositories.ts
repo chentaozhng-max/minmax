@@ -29,6 +29,8 @@ export type ExperimentRecord = {
   signupDeadline: Date;
   minCreditScore: number;
   needsVerification: boolean;
+  /** 需要先通过问卷筛选才能预约。老记录 / 测试夹具不填时按 false 处理 */
+  needsQuestionnaire?: boolean;
 };
 
 /** 预约记录（含冲突判定要用的时段信息） */

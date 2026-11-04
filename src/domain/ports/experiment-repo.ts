@@ -25,6 +25,9 @@ export type PublishExperimentInput = {
   durationMin: number;
   rewardText: string;
   type: ExperimentType;
+  /** ONLINE 的实验没有时段 */
+  mode: "ONLINE" | "OFFLINE";
+  needsQuestionnaire: boolean;
   /** 一对一固定 null */
   groupSize: number | null;
   requirements: string | null;

@@ -37,6 +37,13 @@ export type BookDeps = {
     creditScore: number;
     studentVerified: boolean;
   }>;
+  /**
+   * 需要问卷的实验：这个人是否已经通过了筛选。
+   *
+   * 没传 = 无法确认 = 当作未通过。宁可拦错，也不能让没筛选过的人约上 ——
+   * 名额一旦被占，主试的筛选就白做了。
+   */
+  questionnairePass?(experimentId: string, subjectId: string): Promise<boolean>;
 };
 
 /**
@@ -49,6 +56,14 @@ export async function bookSlot(input: BookInput, deps: BookDeps) {
 
   const slot = await deps.readers.slots.findById(input.slotId);
   if (!slot) throw new ApiError(404, "时段不存在");
+
+  // 问卷门槛：填过还不够，要主试筛过（或分数达到分数线）
+  if (slot.experiment.needsQuestionnaire) {
+    const passed = deps.questionnairePass
+      ? await deps.questionnairePass(slot.experiment.id, input.userId)
+      : false;
+    if (!passed) throw new ApiError(403, "需要先通过问卷筛选才能预约");
+  }
 
   const subject = await deps.loadSubject(input.userId);
   const conflicts = await deps.readers.appointments.findConflicts(input.userId, slot);

@@ -62,6 +62,10 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
   const [durationMin, setDurationMin] = useState("30");
   const [rewardYuan, setRewardYuan] = useState("30");
   const [type, setType] = useState<"INDIVIDUAL" | "GROUP">("INDIVIDUAL");
+  /** 线上实验：问卷即实验，不排时段；线下才需要预约 */
+  const [mode, setMode] = useState<"OFFLINE" | "ONLINE">("OFFLINE");
+  /** 线下实验也可以要求先填问卷（用于筛选被试） */
+  const [needsQuestionnaire, setNeedsQuestionnaire] = useState(false);
   const [groupSize, setGroupSize] = useState("3");
   const [requirements, setRequirements] = useState("");
   const [minCreditScore, setMinCreditScore] = useState("0");
@@ -176,8 +180,10 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         now: new Date(nowIso),
         // 截止时间只有手填表单知道，助手草稿不带，所以单独传
         signupDeadline: new Date(deadlineMs),
+        // 线上实验不排时段，体检里跳过与时段相关的三条
+        mode,
       }),
-    [formDraft, nowIso, deadlineMs],
+    [formDraft, nowIso, deadlineMs, mode],
   );
   const blocking = issues.filter((i) => i.level === "block");
 
@@ -201,6 +207,11 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
       if (type === "GROUP" && Number(groupSize) < 2) return toast("团体实验人数至少 2", "error");
     }
     if (step === 2) {
+      // 线上实验没有时段这一步，直接进确认
+      if (mode === "ONLINE") {
+        setStep(3);
+        return;
+      }
       if (slots.length === 0) return toast("在课程表里点几个时段", "error");
       // 排时段的过程中可能跨过了某个时段的开始时间：进确认页前清掉，
       // 否则名额算多了，发布时服务端也会把这些时段丢掉
@@ -222,6 +233,9 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
     }
     setSubmitting(true);
     try {
+      // 需要问卷的实验不能直接发布：没有问卷，被试点进去无事可做。
+      // 先落成草稿，做完问卷在编辑器里再发布。
+      const needQuestionnaire = mode === "ONLINE" || needsQuestionnaire;
       const data = await postJson<{ id: string }>("/api/experiments", {
         title: title.trim(),
         description: description.trim(),
@@ -229,16 +243,31 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         durationMin: Number(durationMin),
         rewardText: toRewardText(rewardYuan),
         type,
+        mode,
+        needsQuestionnaire: needQuestionnaire,
         groupSize: type === "GROUP" ? Number(groupSize) : null,
         requirements: requirements.trim() || undefined,
         minCreditScore: Number(minCreditScore),
         needsVerification,
         signupDeadline: new Date(`${deadline}:00+08:00`).toISOString(),
-        slots: slots.map((s) => ({ startAt: s.startAt, endAt: s.endAt, capacity: s.capacity })),
-        publish,
+        slots:
+          mode === "ONLINE"
+            ? []
+            : slots.map((s) => ({ startAt: s.startAt, endAt: s.endAt, capacity: s.capacity })),
+        publish: needQuestionnaire ? false : publish,
       });
-      toast(publish ? "实验已发布" : "已保存为草稿");
-      router.replace(`/r/experiments/${data.id}`);
+      toast(
+        needQuestionnaire
+          ? "实验已存为草稿，接下来做问卷"
+          : publish
+            ? "实验已发布"
+            : "已保存为草稿",
+      );
+      router.replace(
+        needQuestionnaire
+          ? `/r/experiments/${data.id}/questionnaire?first=1`
+          : `/r/experiments/${data.id}`,
+      );
     } catch (error) {
       toast(error instanceof Error ? error.message : "发布失败", "error");
       setSubmitting(false);
@@ -250,7 +279,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
       <PageHeader title="发布实验" back="auto" profile={{ role: "RESEARCHER" }} />
 
       <div className="flex items-center gap-1 px-4 pt-3">
-        {["基本信息", "时段", "确认"].map((label, i) => {
+        {["基本信息", mode === "ONLINE" ? "线上设置" : "时段", "确认"].map((label, i) => {
           const index = i + 1;
           const active = step === index;
           const done = step > index;
@@ -280,6 +309,63 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
       <div className="px-4 pt-4">
         {step === 1 ? (
           <div className="space-y-3">
+            <Field label="实验形式">
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { key: "OFFLINE" as const, label: "线下实验", hint: "被试到实验室" },
+                    { key: "ONLINE" as const, label: "线上实验", hint: "填问卷即完成" },
+                  ]
+                ).map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => {
+                      setMode(item.key);
+                      // 线上实验也要填地点（详情页会显示），给个默认值省一步
+                      if (item.key === "ONLINE" && !location.trim()) setLocation("线上");
+                      if (item.key === "OFFLINE" && location.trim() === "线上") setLocation("");
+                    }}
+                    className={cn(
+                      "rounded-[10px] border px-3 py-2.5 text-left",
+                      mode === item.key ? "border-moss bg-moss-tint" : "border-line bg-surface",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "block text-[13px] font-medium",
+                        mode === item.key ? "text-moss" : "text-ink",
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-ink-soft">{item.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            {mode === "OFFLINE" ? (
+              <label className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5">
+                <span>
+                  <span className="block text-[13px] text-ink">需要先填问卷</span>
+                  <span className="block text-[11px] text-ink-soft">
+                    用来筛选被试；填完还要等你在后台通过才能预约
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={needsQuestionnaire}
+                  onChange={(e) => setNeedsQuestionnaire(e.target.checked)}
+                  className="h-5 w-5 accent-[#2e5e4e]"
+                />
+              </label>
+            ) : (
+              <p className="rounded-[8px] bg-moss-tint/50 px-3 py-2 text-[11px] leading-5 text-ink-soft">
+                线上实验必须有问卷：被试提交问卷即视为完成，不需要预约时段。
+              </p>
+            )}
+
             <Link
               href="/r/experiments/assistant"
               className="press block rounded-card border border-moss/25 bg-moss-tint/40 px-3 py-2.5"
@@ -416,6 +502,18 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         ) : null}
 
         {step === 2 ? (
+          mode === "ONLINE" ? (
+            <div className="rounded-card border border-line bg-surface p-4">
+              <h3 className="text-[15px] font-medium text-ink">线上实验不需要排时段</h3>
+              <p className="mt-2 text-[12px] leading-6 text-ink-soft">
+                被试在实验详情页直接填写问卷，提交即完成。你可以在问卷里设置通过线，
+                决定哪些人进入后续环节（比如发消息邀请他们参加第二轮）。
+              </p>
+              <p className="mt-2 text-[12px] leading-6 text-ink-soft">
+                下一步会先保存成草稿，然后进入问卷编辑器。做好问卷并发布后，实验才会出现在被试的列表里。
+              </p>
+            </div>
+          ) : (
           <div className="space-y-2.5">
             <div>
               <h3 className="section-title mb-1.5">点格子排时段</h3>
@@ -480,6 +578,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
               报名截止：<span className="num text-ink">{formatDateTimeCN(new Date(deadlineMs))}</span>
             </p>
           </div>
+          )
         ) : null}
 
         {step === 3 ? (
@@ -492,7 +591,8 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
             <div className="rounded-card border border-line bg-surface p-4">
               <h3 className="text-[16px] font-semibold text-ink">{title}</h3>
               <p className="mt-1 text-[12px] text-ink-soft">
-                {location} · <span className="num">{durationMin} 分钟</span> ·{" "}
+                {mode === "ONLINE" ? "线上实验" : "线下实验"} · {location} ·{" "}
+                <span className="num">{durationMin} 分钟</span> ·{" "}
                 {rewardLabel(toRewardText(rewardYuan))} ·{" "}
                 {type === "GROUP" ? `团体 ${groupSize} 人` : "一对一"}
               </p>
@@ -506,15 +606,27 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                   {needsVerification ? "需学生认证" : "不限认证"}
                 </p>
                 <p>
-                  时段 <span className="num text-ink">{slots.length}</span> 个
-                  {type === "GROUP" ? (
-                    <>
-                      ，每场 <span className="num text-ink">{groupSize}</span> 人，共{" "}
-                      <span className="num text-ink">{slots.length * (Number(groupSize) || 0)}</span> 个名额
-                    </>
+                  {mode === "ONLINE" ? (
+                    <>线上实验：被试提交问卷即完成，不需要预约时段</>
                   ) : (
                     <>
-                      ，总容量 <span className="num text-ink">{slots.reduce((n, s) => n + s.capacity, 0)}</span>
+                      时段 <span className="num text-ink">{slots.length}</span> 个
+                      {type === "GROUP" ? (
+                        <>
+                          ，每场 <span className="num text-ink">{groupSize}</span> 人，共{" "}
+                          <span className="num text-ink">
+                            {slots.length * (Number(groupSize) || 0)}
+                          </span>{" "}
+                          个名额
+                        </>
+                      ) : (
+                        <>
+                          ，总容量{" "}
+                          <span className="num text-ink">
+                            {slots.reduce((n, s) => n + s.capacity, 0)}
+                          </span>
+                        </>
+                      )}
                     </>
                   )}
                 </p>

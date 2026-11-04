@@ -237,3 +237,29 @@ describe("bookSlot — 前置校验（全部不进事务）", () => {
     expect(deps.journal).toEqual([]);
   });
 });
+
+describe("bookSlot — 问卷门槛", () => {
+  const needsQuestionnaire = () =>
+    makeSlot({ experiment: { ...makeSlot().experiment, needsQuestionnaire: true } });
+
+  it("没通过问卷 → 403，且不进入事务（不占位）", async () => {
+    const deps = { ...makeDeps({ slot: needsQuestionnaire() }), questionnairePass: async () => false };
+
+    await expect(bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps)).rejects.toThrow(/问卷筛选/);
+    expect(deps.journal).toEqual([]);
+  });
+
+  it("通过了就正常建单", async () => {
+    const deps = { ...makeDeps({ slot: needsQuestionnaire() }), questionnairePass: async () => true };
+
+    const appt = await bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps);
+    expect(appt.status).toBe(AppointmentStatus.PENDING_SUBJECT_CONFIRM);
+    expect(deps.journal).toEqual(["BEGIN", "tryOccupy:slot_1", "create", "COMMIT"]);
+  });
+
+  it("不需要问卷的实验不调问卷查询（deps 不注入也能约）", async () => {
+    const deps = makeDeps({});
+    const appt = await bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps);
+    expect(appt.id).toBe("appt_new");
+  });
+});

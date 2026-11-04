@@ -54,6 +54,7 @@ model User {
   directMessages      DirectMessage[]
 
   notifications Notification[]
+  questionnaireResponses QuestionnaireResponse[]
 
   @@index([role])
 }
@@ -67,6 +68,10 @@ model Experiment {
   durationMin  Int
   rewardText   String
   type         String @default("INDIVIDUAL") // ExperimentType
+  /// 实验形态：OFFLINE 到实验室，ONLINE 线上完成（问卷即实验，不排时段）
+  mode         String @default("OFFLINE") // ExperimentMode
+  /// 是否需要先填问卷。线上实验恒为 true；线下由主试勾选
+  needsQuestionnaire Boolean @default(false)
   groupSize    Int?
   requirements String?
   minCreditScore Int  @default(0)
@@ -79,8 +84,10 @@ model Experiment {
   slots      Slot[]
   appointments Appointment[]
   chatSessions ChatSession[]
+  questionnaire Questionnaire?
 
   @@index([status, signupDeadline])
+  @@index([mode, status])
 }
 
 model Slot {
@@ -251,3 +258,77 @@ model DirectMessage {
 
   @@index([threadId, createdAt])
 }
+
+// ── 实验问卷 ─────────────────────────────────────
+// 一门实验最多一份问卷（experimentId unique）。
+// 题目与答案都用 TEXT 存 JSON —— 与 ChatSession.messages 同一套约定，
+// SQLite 不支持 Json 字段，读写一律走 domain/questionnaire.ts 的 helper。
+model Questionnaire {
+  id           String  @id @default(cuid())
+  experimentId String  @unique
+  title        String
+  intro        String?
+  /// DRAFT 只有主试能看；PUBLISHED 被试才能填
+  status       String  @default("DRAFT")
+  /// 主试写的评分要求（自然语言），给计分 agent 当评分标准
+  scoringRule  String?
+  /// 通过线。null = 不做分数筛选
+  passScore    Int?
+  /// 从上传文件里解析出的原文，保留用于「重新生成」
+  sourceText   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  experiment Experiment              @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  questions  Question[]
+  responses  QuestionnaireResponse[]
+
+  @@index([status])
+}
+
+model Question {
+  id              String  @id @default(cuid())
+  questionnaireId String
+  /// 展示顺序，从 0 开始
+  order           Int
+  /// SINGLE | MULTI | SCALE | TEXT
+  type            String
+  title           String
+  required        Boolean @default(true)
+  /// 选择题的选项，JSON: ["选项A","选项B"]；非选择题为 null
+  options         String?
+  scaleMin        Int?
+  scaleMax        Int?
+
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+
+  @@index([questionnaireId, order])
+}
+
+/// 一份答卷。
+/// `(questionnaireId, subjectId)` 唯一 —— 同一人重复提交是「覆盖」而不是新增，
+/// 与报名一样的幂等思路：靠数据库约束，不靠应用层查一遍。
+model QuestionnaireResponse {
+  id              String   @id @default(cuid())
+  questionnaireId String
+  subjectId       String
+  /// JSON: { [questionId]: string | string[] | number }
+  answers         String
+  /// null = 还没算分（模型不可用或未触发）
+  score           Int?
+  scoreReason     String?
+  /// null = 未判定；true/false 由计分结果或主试手动改
+  passed          Boolean?
+  /// SUBMITTED | SCORED | INVITED
+  status          String   @default("SUBMITTED")
+  submittedAt     DateTime @default(now())
+  scoredAt        DateTime?
+  invitedAt       DateTime?
+
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
+  subject       User          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([questionnaireId, subjectId])
+  @@index([questionnaireId, score])
+}
+

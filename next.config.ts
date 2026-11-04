@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingRoot: process.cwd(),
 
+  /**
+   * 文档解析库只在服务端用，不参与打包：
+   *   unpdf 内部带 pdfjs 的 worker，xlsx 体积大且用了 Node 的 fs，
+   *   mammoth 依赖 jszip。交给 Node 直接 require 最稳，也避免 Turbopack
+   *   把它们当成客户端模块去解析。
+   */
+  serverExternalPackages: ["mammoth", "xlsx", "unpdf"],
+
   experimental: {
     /**
      * 客户端路由缓存（Next 15 起默认是 0 秒）。

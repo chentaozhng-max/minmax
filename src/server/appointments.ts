@@ -11,6 +11,7 @@ import {
 import { penalizeTx, rewardAttendanceTx } from "@/server/credit";
 import { bookSlot as bookSlotUseCase, type BookInput } from "@/application/book-slot";
 import { makeBundle, makeUnitOfWork } from "@/adapters/db/prisma/unit-of-work";
+import { hasPassedQuestionnaire } from "@/server/questionnaire-service";
 
 /**
  * 报名 / 锁定时段。
@@ -35,6 +36,7 @@ export async function bookSlot(input: BookInput) {
       });
       return user;
     },
+    questionnairePass: hasPassedQuestionnaire,
   });
 }
 

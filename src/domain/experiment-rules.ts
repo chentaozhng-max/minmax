@@ -34,6 +34,11 @@ export type ExperimentDraftInput = {
   signupDeadline: Date;
   slots: SlotDraft[];
   now: Date;
+  /**
+   * 实验形态。ONLINE 的实验不排时段（问卷即实验），
+   * 因此「至少一个时段」「截止早于最早时段」这两条对它不适用。
+   */
+  mode?: "ONLINE" | "OFFLINE";
 };
 
 /** 团体人数上限，与 createExperimentSchema 保持一致 */
@@ -70,7 +75,7 @@ export function capacityForSlot(
  * 前四条都是一对一/团体共用的，第五条只在 GROUP 生效。
  */
 export function assertExperimentDraft(input: ExperimentDraftInput): Rejection | null {
-  const { signupDeadline, slots, type, groupSize, now } = input;
+  const { signupDeadline, slots, type, groupSize, now, mode = "OFFLINE" } = input;
 
   if (Number.isNaN(signupDeadline.getTime())) {
     return { status: 400, message: "报名截止时间格式不正确" };
@@ -78,28 +83,32 @@ export function assertExperimentDraft(input: ExperimentDraftInput): Rejection | 
   if (signupDeadline.getTime() <= now.getTime()) {
     return { status: 400, message: "报名截止时间必须晚于现在" };
   }
-  if (slots.length === 0) {
-    return { status: 400, message: "至少需要一个时段" };
-  }
 
-  for (const slot of slots) {
-    if (Number.isNaN(slot.startAt.getTime()) || Number.isNaN(slot.endAt.getTime())) {
-      return { status: 400, message: "时段的时间格式不正确" };
+  // 线上实验不排时段：问卷提交即完成，没有「报名截止要早于最早时段」这回事
+  if (mode !== "ONLINE") {
+    if (slots.length === 0) {
+      return { status: 400, message: "至少需要一个时段" };
     }
-    if (slot.endAt.getTime() <= slot.startAt.getTime()) {
-      return { status: 400, message: "时段的结束时间必须晚于开始时间" };
+
+    for (const slot of slots) {
+      if (Number.isNaN(slot.startAt.getTime()) || Number.isNaN(slot.endAt.getTime())) {
+        return { status: 400, message: "时段的时间格式不正确" };
+      }
+      if (slot.endAt.getTime() <= slot.startAt.getTime()) {
+        return { status: 400, message: "时段的结束时间必须晚于开始时间" };
+      }
     }
-  }
 
-  // 按开始时间排序后再判重叠 —— 输入的时段顺序由前端决定，不能假定有序
-  const sorted = [...slots].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
+    // 按开始时间排序后再判重叠 —— 输入的时段顺序由前端决定，不能假定有序
+    const sorted = [...slots].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
 
-  if (signupDeadline.getTime() >= sorted[0].startAt.getTime()) {
-    return { status: 400, message: "报名截止时间必须早于最早时段的开始时间" };
-  }
-  for (let i = 1; i < sorted.length; i += 1) {
-    if (sorted[i].startAt.getTime() < sorted[i - 1].endAt.getTime()) {
-      return { status: 400, message: "时段之间存在重叠，请检查后重试" };
+    if (signupDeadline.getTime() >= sorted[0].startAt.getTime()) {
+      return { status: 400, message: "报名截止时间必须早于最早时段的开始时间" };
+    }
+    for (let i = 1; i < sorted.length; i += 1) {
+      if (sorted[i].startAt.getTime() < sorted[i - 1].endAt.getTime()) {
+        return { status: 400, message: "时段之间存在重叠，请检查后重试" };
+      }
     }
   }
 

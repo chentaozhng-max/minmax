@@ -32,6 +32,10 @@ export type PublishExperimentInput = {
   durationMin: number;
   rewardText: string;
   type: "INDIVIDUAL" | "GROUP";
+  /** ONLINE 不排时段；OFFLINE 必须有时段 */
+  mode?: "ONLINE" | "OFFLINE";
+  /** 是否需要先填问卷。线上恒为 true */
+  needsQuestionnaire?: boolean;
   groupSize?: number | null;
   requirements?: string | null;
   minCreditScore: number;
@@ -61,6 +65,9 @@ export async function publishExperiment(
   deps: PublishExperimentDeps,
 ): Promise<PublishResult> {
   const now = input.now ?? new Date();
+  const mode = input.mode ?? "OFFLINE";
+  // 线上实验没有时段，问卷就是实验本身 —— 不允许关掉
+  const needsQuestionnaire = mode === "ONLINE" ? true : Boolean(input.needsQuestionnaire);
 
   const publisher = await deps.loadPublisher(input.userId);
   const banned = publisherBanRejection(publisher.bannedUntil, now);
@@ -94,6 +101,7 @@ export async function publishExperiment(
     signupDeadline: deadline,
     slots: rawSlots,
     now,
+    mode,
   });
   if (rejection) throw new ApiError(rejection.status, rejection.message);
 
@@ -114,6 +122,8 @@ export async function publishExperiment(
     durationMin: input.durationMin,
     rewardText: input.rewardText,
     type: input.type,
+    mode,
+    needsQuestionnaire,
     groupSize,
     requirements: input.requirements ?? null,
     minCreditScore: input.minCreditScore,

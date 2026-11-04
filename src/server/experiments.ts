@@ -167,6 +167,102 @@ export async function getExperimentDetail(id: string) {
   return experiment;
 }
 
+/**
+ * 主试详情接口的入参形状。
+ *
+ * 只声明用得到的字段：这样 route 里的 prisma 查询结果可以结构上直接传进来，
+ * 而 server 层不必 import Prisma 的类型。
+ */
+export type ResearcherDetailRow = {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  durationMin: number;
+  rewardText: string;
+  type: string;
+  mode: string;
+  needsQuestionnaire: boolean;
+  groupSize: number | null;
+  requirements: string | null;
+  minCreditScore: number;
+  needsVerification: boolean;
+  signupDeadline: Date;
+  status: string;
+  slots: { id: string; startAt: Date; endAt: Date; capacity: number; bookedCount: number }[];
+  appointments: {
+    id: string;
+    status: string;
+    appealStatus: string | null;
+    createdAt: Date;
+    subject: {
+      id: string;
+      name: string;
+      school: string | null;
+      studentId: string | null;
+      creditScore: number;
+      studentVerified: boolean;
+      noShowCount: number;
+    };
+    slot: { startAt: Date; endAt: Date };
+  }[];
+};
+
+/** 主试详情：把时间转成 ISO、把「这个状态能做什么」算成布尔位，页面直接用 */
+export function formatResearcherDetail(experiment: ResearcherDetailRow, now: Date = new Date()) {
+  return {
+    id: experiment.id,
+    title: experiment.title,
+    description: experiment.description,
+    location: experiment.location,
+    durationMin: experiment.durationMin,
+    rewardText: experiment.rewardText,
+    type: experiment.type,
+    mode: experiment.mode,
+    needsQuestionnaire: experiment.needsQuestionnaire,
+    groupSize: experiment.groupSize,
+    requirements: experiment.requirements,
+    minCreditScore: experiment.minCreditScore,
+    needsVerification: experiment.needsVerification,
+    signupDeadline: experiment.signupDeadline.toISOString(),
+    status: experiment.status,
+    slots: experiment.slots.map((s) => ({
+      id: s.id,
+      startAt: s.startAt.toISOString(),
+      endAt: s.endAt.toISOString(),
+      capacity: s.capacity,
+      bookedCount: s.bookedCount,
+      remaining: Math.max(0, s.capacity - s.bookedCount),
+    })),
+    applicants: experiment.appointments.map((a) => ({
+      id: a.id,
+      status: a.status,
+      appealStatus: a.appealStatus,
+      createdAt: a.createdAt.toISOString(),
+      canConfirm: a.status === "AWAITING_RESEARCHER",
+      canVerify: a.status === "CHECKED_IN",
+      canMarkNoShow: a.status === "CONFIRMED" || a.status === "AWAITING_RESEARCHER",
+      canRelease: a.status === "PENDING_SUBJECT_CONFIRM" || a.status === "AWAITING_RESEARCHER",
+      canAppealResolve: a.appealStatus === "PENDING",
+      subject: {
+        id: a.subject.id,
+        name: a.subject.name,
+        school: a.subject.school,
+        studentId: a.subject.studentId,
+        creditScore: a.subject.creditScore,
+        studentVerified: a.subject.studentVerified,
+        noShowCount: a.subject.noShowCount,
+        lowCredit: a.subject.creditScore < CREDIT.LOW_CREDIT_THRESHOLD,
+      },
+      slot: {
+        startAt: a.slot.startAt.toISOString(),
+        endAt: a.slot.endAt.toISOString(),
+        started: a.slot.startAt.getTime() <= now.getTime(),
+      },
+    })),
+  };
+}
+
 export async function listResearcherExperiments(researcherId: string) {
   const experiments = await prisma.experiment.findMany({
     where: { researcherId },

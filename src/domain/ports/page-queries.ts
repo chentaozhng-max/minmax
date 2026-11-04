@@ -109,6 +109,10 @@ export type ExperimentPageDetail = {
   researcherId: string;
   status: string;
   type: ExperimentType;
+  /** ONLINE = 线上实验（问卷即实验，没有时段） */
+  mode: "ONLINE" | "OFFLINE";
+  /** 需要先填问卷，且通过筛选后才能预约 */
+  needsQuestionnaire: boolean;
   groupSize: number | null;
   location: string;
   durationMin: number;

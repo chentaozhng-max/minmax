@@ -18,6 +18,7 @@ const SLOT_INCLUDE = {
       signupDeadline: true,
       minCreditScore: true,
       needsVerification: true,
+      needsQuestionnaire: true,
     },
   },
 } as const;
@@ -37,6 +38,7 @@ type RawSlot = {
     signupDeadline: Date;
     minCreditScore: number;
     needsVerification: boolean;
+    needsQuestionnaire: boolean;
   };
 };
 
@@ -56,6 +58,7 @@ function toRecord(raw: RawSlot): SlotRecord {
       signupDeadline: raw.experiment.signupDeadline,
       minCreditScore: raw.experiment.minCreditScore,
       needsVerification: raw.experiment.needsVerification,
+      needsQuestionnaire: raw.experiment.needsQuestionnaire,
     },
   };
 }

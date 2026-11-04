@@ -23,6 +23,8 @@ type Detail = {
   durationMin: number;
   rewardText: string;
   type: string;
+  mode: string;
+  needsQuestionnaire: boolean;
   groupSize: number | null;
   requirements: string | null;
   minCreditScore: number;
@@ -218,6 +220,21 @@ export function ResearcherExperimentDetail({
             <Stat label="总容量" value={total} />
           </div>
         </div>
+
+        {data.needsQuestionnaire ? (
+          <Link
+            href={`/r/experiments/${experimentId}/questionnaire`}
+            className="mt-3 block rounded-card border border-moss/25 bg-moss-tint/40 px-3.5 py-3"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-medium text-ink">问卷与答卷</span>
+              <span className="text-[11px] text-moss">管理 →</span>
+            </div>
+            <p className="mt-1 text-[11px] leading-5 text-ink-soft">
+              上传材料生成题目、按分数筛选、给达标者发预约邀请
+            </p>
+          </Link>
+        ) : null}
 
         <div className="mt-3 flex gap-1">
           {(

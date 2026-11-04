@@ -11,6 +11,7 @@ import { rewardAmountText, rewardLabel } from "@/lib/reward";
 import { SlotGrid } from "@/components/slot-grid";
 import { formatDateTimeCN, formatDayCN, formatDayKey, formatHM } from "@/lib/time";
 import { remainingOf } from "@/server/experiments";
+import { getSubjectState } from "@/server/questionnaire-service";
 import { cn } from "@/lib/cn";
 import { Bot, ChevronRight } from "lucide-react";
 import { BookCta } from "./book-cta";
@@ -63,6 +64,23 @@ export default async function ExperimentDetailPage({
   const researcher = experiment.researcher;
   const researchCount = await query.countPublishedExperiments(researcher.id);
 
+  // 需要问卷的实验：三种状态决定底部按钮（未发布 / 没填 / 没通过）
+  const qState = experiment.needsQuestionnaire
+    ? await getSubjectState(experiment.id, user?.id ?? null)
+    : null;
+
+  const ctaOverride = qState
+    ? !qState.published
+      ? { label: "问卷准备中", disabled: true, reason: "主试还在编辑问卷，稍后再来" }
+      : !qState.submitted
+        ? { label: "先填写问卷", href: `/experiments/${experiment.id}/questionnaire` }
+        : !qState.passed
+          ? { label: "等待主试筛选", disabled: true, reason: "通过后主试会给你发消息，届时就能预约" }
+          : experiment.mode === "ONLINE"
+            ? { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
+            : null
+    : null;
+
   const slotViews = openSlots.map((s) => ({
     id: s.id,
     startAt: s.startAt.toISOString(),
@@ -76,6 +94,16 @@ export default async function ExperimentDetailPage({
   const closed = experiment.status !== "PUBLISHED";
   const deadlinePassed = experiment.signupDeadline.getTime() <= now.getTime();
   const remainingSeats = openSlots.reduce((n, s) => n + remainingOf(s), 0);
+
+  // 问卷入口也要受截止时间约束：过了截止还在收答卷，主试的筛选就没意义了
+  const finalOverride =
+    ctaOverride && ctaOverride.href && (closed || deadlinePassed)
+      ? {
+          label: closed ? "实验已关闭" : "问卷已截止",
+          disabled: true,
+          reason: closed ? "该实验已关闭" : "已过报名截止时间",
+        }
+      : ctaOverride;
 
   return (
     <main className="shell actionbar-space bg-surface">
@@ -101,7 +129,13 @@ export default async function ExperimentDetailPage({
 
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <Tag>{experiment.type === "GROUP" ? `团体 ${experiment.groupSize ?? 2} 人` : "一对一"}</Tag>
-          <Tag>{remainingSeats > 0 ? `剩 ${remainingSeats} 位` : "已约满"}</Tag>
+          <Tag>
+            {experiment.mode === "ONLINE"
+              ? "线上完成"
+              : remainingSeats > 0
+                ? `剩 ${remainingSeats} 位`
+                : "已约满"}
+          </Tag>
           {experiment.minCreditScore > 0 ? (
             <Tag tone="warn">信誉 ≥ {experiment.minCreditScore}</Tag>
           ) : null}
@@ -135,7 +169,7 @@ export default async function ExperimentDetailPage({
         <dl className="mt-2.5 space-y-2 text-[13px] leading-5">
           <InfoRow label="地点" value={experiment.location} />
           <InfoRow label="报名截止" value={formatDateTimeCN(experiment.signupDeadline)} />
-          <InfoRow label="剩余时段" value={`${openSlots.length} 段`} />
+          <InfoRow label={experiment.mode === "ONLINE" ? "参与方式" : "剩余时段"} value={experiment.mode === "ONLINE" ? "填写问卷" : `${openSlots.length} 段`} />
           <InfoRow
             label="最早可约"
             value={openSlots[0] ? formatDateTimeCN(openSlots[0].startAt) : "暂无"}
@@ -162,7 +196,8 @@ export default async function ExperimentDetailPage({
 
       <Divider />
 
-      {/* 可选时段 */}
+      {/* 可选时段 —— 线上实验没有时段，整块不渲染 */}
+      {experiment.mode === "ONLINE" ? null : (
       <section className="px-4 py-4">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-[15px] font-semibold text-ink">可选时段</h3>
@@ -183,11 +218,12 @@ export default async function ExperimentDetailPage({
           点下方「立即预约」，选一个你能来的时段就行。
         </p>
       </section>
+      )}
 
       {/* AI 入口 —— 每个实验都留一个，进来就能让助手帮你挑时段。
           实验已关闭/报名已截止时不显示：这时候进去也约不了，等于给个死路。
           但资格不符（信誉/认证/禁期）时仍然显示 —— 进去能看到原因，也顺带拿到「去约别的实验」的出口。 */}
-      {!closed && !deadlinePassed ? (
+      {!closed && !deadlinePassed && experiment.mode !== "ONLINE" ? (
         <section className="px-4 pb-4">
           <Link
             href={`/experiments/${experiment.id}/chat`}
@@ -259,6 +295,7 @@ export default async function ExperimentDetailPage({
                         : eligibility.message
               }
               existingAppointmentId={mine?.id ?? null}
+              override={finalOverride}
             />
           </div>
         </div>

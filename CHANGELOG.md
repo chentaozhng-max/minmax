@@ -10,10 +10,78 @@
 > 改名后有一批文件变成了「转发壳」，只保留旧 import 路径。判断一个文件是真是假，
 > 看它有没有 `export * from "@/domain/..."` 这类转发语句。
 
-版本号规则：`v1.0` → `v1.1` → `v1.2` → `v1.3` → `v1.3.1`。
+版本号规则：`v1.0` → `v1.1` → `v1.2` → `v1.3` → `v1.3.1` → `v1.4.0`。
 对外可见的更新加一个小版本（新增功能、改交互、修用户能感知的 bug）；
 只改文档、注释、测试而不改变运行时行为时加补丁号（`v1.3.x`）；
 数据库结构大改或推翻重做时才升大版本（`v2.0`）。
+
+---
+
+## v1.4.0 — 2026-11-04
+
+**一句话**：发布实验时分成**线上 / 线下**两种形态；线上（或勾选了「需要问卷」的线下）实验，主试可以上传 PDF / Word / Excel 让 Agent 出一份问卷、自己改完发布，被试填完后由 Agent 计分，主试按分数线一键给达标者发私信。**线下实验只有通过问卷的人才能预约。**
+
+**升级影响**：数据库新增 3 张表 + 2 个字段（`Experiment.mode` / `Experiment.needsQuestionnaire`）。旧数据默认 `mode=OFFLINE`、`needsQuestionnaire=false`，行为与 v1.3.1 完全一致，不需要迁移脚本。
+
+### 一条链路看懂（线上）
+
+```
+主试：发布实验 → 选「线上」 → 第 2 步不排时段
+        → 编辑器上传 PDF/Word/Excel（或只写一句话）
+        → Agent 出题 → 主试逐题改 → 设评分要求 + 分数线 → 发布问卷
+        → 上架实验
+被试：详情页看到「先填写问卷」→ 提交
+服务端：提交即调模型计分（0–100 + 一句理由），失败则留空等人工
+主试：答卷后台看统计 / 问 AI 该定多少分 / 按分数线发私信
+```
+
+线下把最后两段换成：**通过问卷 → 才能点预约**（`book-slot` 里的门槛），未通过时详情页按钮直接变成「先填写问卷」。
+
+### 新增数据表
+
+| 表 | 作用 | 关键约束 |
+|---|---|---|
+| `Questionnaire` | 一份问卷对应一个实验 | `experimentId @unique`，`status` / `scoringRule` / `passScore` / `sourceText` |
+| `Question` | 题目，选项存 JSON 文本 | `order` 排序，`options` 是 `TEXT`（SQLite 无 Json） |
+| `QuestionnaireResponse` | 一次作答 | `@@unique([questionnaireId, subjectId])`，重填覆盖并清空旧分数 |
+
+### 新增分层落点（改这块先看这里）
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| domain | `domain/questionnaire.ts` | 纯规则：归一化、发布体检、`composeQuestionnaireFromText` 规则版拆题、答案校验、`passState` / `selectQualified` |
+| domain | `domain/ports/questionnaire.ts`、`ports/notice.ts` | 两个端口：问卷仓储、通知发送 |
+| application | `submit-questionnaire.ts` / `score-questionnaire.ts` / `invite-qualified.ts` | 用例，计分器与通知端口都是注入的 |
+| adapters | `db/prisma/questionnaire-repo.ts` | JSON 序列化**只在这里** |
+| adapters | `db/prisma/notice-repo.ts` | 一个事务写 `Notification` + `DirectThread` + `DirectMessage` |
+| adapters | `db/prisma/experiment-brief-repo.ts` | 问卷链路专用的最小查询（别用详情页那套大查询） |
+| adapters | `files/document-text.ts` | `unpdf` / `mammoth` / `xlsx` 解析，`.doc` 明确报错，扫描件返回空由调用方判空 |
+| server | `questionnaire-agent.ts` | 三个模型动作：出题 / 计分 / 建议分数线，**全部可降级** |
+| server | `questionnaire-service.ts` | 编排 + 归属校验 |
+| server | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验 |
+
+### 几个刻意的决定
+
+1. **线上实验 `slots` 允许为空**。`assertExperimentDraft` 里「至少一个时段 / 截止早于最早时段 / 时段重叠」整块被 `if (mode !== "ONLINE")` 包住；`reviewExperimentDraft` 同步跳过四条。
+2. **需要问卷的实验不能先上架**。上下架接口会检查 `needsQuestionnaire && questionnaire.status !== "PUBLISHED"`，否则提示「问卷还没发布」。
+3. **上传接口不落库**。返回的是草稿，主试改完再保存；解析错、题目跑偏都不污染已有问卷。
+4. **计分失败不阻断提交**。模型不可用时 `score=null`、`passed=null`，后台显示「未算分」，等主试用「重算」补。
+5. **`hasPassed` 在没建问卷时返回 `true`**。不能因为主试没做问卷把所有人拦死；实验关掉 `needsQuestionnaire` 时也不查。
+6. **线上实验详情页不显示时段块与「让 AI 帮你挑时段」**，因为线上没有时段可挑。
+
+### 验证（本次实测）
+
+- `npm test` → **55 文件 / 634 用例**（新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/book-slot.test.ts` 追加 3 例门槛用例）
+- `npm run lint:layers` → 225 文件通过
+- `npx tsc --noEmit` 零错误；`npm run build` 通过
+- 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
+
+### 已知未做
+
+- 答卷后台没有导出 CSV
+- 分数线只能整份问卷一条，不支持按题设权重
+- 扫描件 PDF 不做 OCR（提示主试换文件或直接粘题目）
+- 邀请只发站内私信，不发邮件/短信
 
 ---
 

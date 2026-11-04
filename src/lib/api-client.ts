@@ -45,12 +45,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 }
 
 async function once<T>(path: string, init: RequestInit): Promise<T> {
+  // FormData 必须让浏览器自己带 boundary，手写 Content-Type 会让后端解析失败
+  const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
   let res: Response;
   try {
     res = await fetch(path, {
       ...init,
       headers: {
-        "Content-Type": "application/json",
+        ...(isForm ? {} : { "Content-Type": "application/json" }),
         ...(init.headers ?? {}),
       },
       credentials: "same-origin",
@@ -88,4 +90,9 @@ export function postJson<T>(path: string, body?: unknown, options: ApiOptions = 
     method: "POST",
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+/** 上传文件用。与 postJson 的差别只有两点：不设 Content-Type、body 是 FormData */
+export function postForm<T>(path: string, form: FormData, options: ApiOptions = {}) {
+  return api<T>(path, { ...options, method: "POST", body: form });
 }
