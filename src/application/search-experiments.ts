@@ -45,6 +45,14 @@ export type SearchSubject = {
 export type SearchExperimentsDeps = {
   search: ExperimentSearchPort;
   now?: Date;
+  /**
+   * 已经约了、不该再推荐的实验 id（进行中的那些）。
+   *
+   * 由应用层从「持久事实」传进来，而不是在 SQL 里判 —— 「什么算已经约了」
+   * 是业务判断（`ACTIVE_APPOINTMENT_STATUSES`），换数据源不该重写。
+   * 被排除的不进 `excluded`（那不是「你报不了」，是「你已经报了」）。
+   */
+  excludeExperimentIds?: string[];
 };
 
 /** 交给页面/模型的一条结果 */
@@ -100,10 +108,17 @@ export async function searchExperiments(
 
   const candidates = await deps.search.searchCandidates(query, now);
 
+  // 已经约过的实验直接不出现在候选里：用户不需要「你已经约了」这种推荐，
+  // 也不需要看到它占着列表。这一步在资格判定之前，因为「已约」不是资格问题。
+  const excludedIds = new Set(deps.excludeExperimentIds ?? []);
+  const fresh = excludedIds.size > 0
+    ? candidates.filter((c) => !excludedIds.has(c.id))
+    : candidates;
+
   const eligible: ExperimentCandidate[] = [];
   const excluded: ExcludedExperiment[] = [];
 
-  for (const c of candidates) {
+  for (const c of fresh) {
     const verdict = checkEligibility(
       {
         bannedUntil: subject.bannedUntil,

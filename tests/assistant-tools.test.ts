@@ -17,6 +17,7 @@ const ctx: AssistantContext = {
     bannedUntil: null,
   },
   now: new Date("2026-11-04T08:00:00+08:00"),
+  facts: { past: [], upcoming: [] },
   search: async () => emptyPayload,
 };
 

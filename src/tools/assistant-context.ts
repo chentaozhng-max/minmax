@@ -12,6 +12,7 @@
  */
 
 import type { SearchCriteria } from "@/domain/search-criteria";
+import type { DurableFacts } from "@/domain/ports/assistant-query";
 
 /** 助手眼里的一门候选实验（渲染卡片用） */
 export type AssistantExperimentCard = {
@@ -43,6 +44,14 @@ export type AssistantContext = {
     bannedUntil: Date | null;
   };
   now: Date;
+  /**
+   * 每轮现查的持久事实（做过 / 正在做的实验）。
+   *
+   * 放在上下文里而不是让工具自己去查：工具只负责「按条件搜索」，
+   * 不该知道「这个人参加过什么」。而且事实要进提示词（`formatDurableFacts`），
+   * 那是编排的事。
+   */
+  facts: DurableFacts;
   /**
    * 执行搜索。注入成回调，工具层不直接 import prisma：
    * 这样工具测试可以塞假实现，也不必知道适配器叫什么名字。

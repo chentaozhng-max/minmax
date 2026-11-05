@@ -19,17 +19,12 @@
  * 不是领域规则 —— 领域层只回答「什么是有效的」，不回答「怎么排版给人看」。
  * 领域规则（做过/在做怎么切时间轴）留在 domain/ports/assistant-query.ts。
  */
-import type { AssistantAppointment, PastExperiment } from "@/domain/ports/assistant-query";
+import type { DurableFacts } from "@/domain/ports/assistant-query";
 import { formatDateTimeCN } from "@/lib/time";
 
 /** 最多列几条：再多模型也不会逐条念，反而挤掉真正该说的话 */
 const MAX_PAST = 5;
 const MAX_UPCOMING = 5;
-
-export type DurableFacts = {
-  past: PastExperiment[];
-  upcoming: AssistantAppointment[];
-};
 
 /**
  * 把持久事实写成提示词里的一块。

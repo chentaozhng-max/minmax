@@ -32,6 +32,12 @@ export type PastExperiment = {
   status: string;
 };
 
+/** 会话的持久事实：做过的 + 正在做的。两者都每轮现查，绝不快照进会话 */
+export type DurableFacts = {
+  past: PastExperiment[];
+  upcoming: AssistantAppointment[];
+};
+
 export interface AssistantQuery {  /**
    * 我在 `from` 之后还有效的预约，按开始时间升序。
    *

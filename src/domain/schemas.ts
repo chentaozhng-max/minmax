@@ -87,6 +87,17 @@ export const chatMessageSchema = z.object({
 });
 
 /**
+ * 门厅（跨实验助手）的一轮请求。
+ *
+ * `sessionId` 可选：前端从页面状态里带上它，服务端据此续接**具体的**那条会话。
+ * 不带也能用 —— 服务端退化成「取 30 分钟内最近活跃的那条」。之所以不设成必填：
+ * 刷新页面时前端可能还没拿到 id（GET 才有），那时硬要求就等于「首句必失败」。
+ */
+export const assistantChatMessageSchema = chatMessageSchema.extend({
+  sessionId: z.string().min(1).optional(),
+});
+
+/**
  * 发布助手请求体。
  *
  * history 只带最近的文字轮次；上一版草稿单独传，服务端拼成一条 user 消息。
