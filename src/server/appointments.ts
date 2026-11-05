@@ -13,7 +13,7 @@ import { bookSlot as bookSlotUseCase, type BookInput } from "@/application/book-
 import { makeBundle, makeUnitOfWork } from "@/adapters/db/prisma/unit-of-work";
 import { hasPassedQuestionnaire } from "@/server/questionnaire-service";
 import { makeNotificationRepository } from "@/adapters/db/prisma/notification-repo";
-import { formatDateTimeCN } from "@/lib/time";
+import { formatSlotRange } from "@/lib/time";
 
 const notifications = makeNotificationRepository(prisma as never);
 
@@ -47,9 +47,7 @@ export async function bookSlot(input: BookInput) {
         appointmentId: input.appointmentId,
         experimentId: input.experimentId,
         createdAt: new Date(),
-        content: `已约上「${input.experimentTitle}」${formatDateTimeCN(input.startAt)}–${formatDateTimeCN(
-          input.endAt,
-        )}，等待主试确认。`,
+        content: `已约上「${input.experimentTitle}」${formatSlotRange(input.startAt, input.endAt)}，等待主试确认。`,
       });
     },
   });
