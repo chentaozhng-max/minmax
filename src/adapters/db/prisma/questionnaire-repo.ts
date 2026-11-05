@@ -57,7 +57,7 @@ type RawResponse = {
   status: string;
   submittedAt: Date;
   invitedAt: Date | null;
-  subject?: { name: string; school: string | null; studentVerified: boolean; creditScore: number };
+  subject?: { name: string; school: string | null; studentId: string | null; studentVerified: boolean; creditScore: number };
 };
 
 function parseJson<T>(raw: string | null, fallback: T): T {
@@ -102,6 +102,7 @@ function toResponse(row: RawResponse): ResponseRecord {
     subjectId: row.subjectId,
     subjectName: row.subject?.name ?? "未知被试",
     subjectSchool: row.subject?.school ?? null,
+    subjectStudentId: row.subject?.studentId ?? null,
     subjectVerified: row.subject?.studentVerified ?? false,
     subjectCredit: row.subject?.creditScore ?? 0,
     answers: parseJson<AnswerMap>(row.answers, {}),
@@ -190,7 +191,9 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
         where: { questionnaireId },
         orderBy: [{ score: "desc" }, { submittedAt: "asc" }],
         include: {
-          subject: { select: { name: true, school: true, studentVerified: true, creditScore: true } },
+          subject: {
+            select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
+          },
         },
       })) as RawResponse[];
       return rows.map(toResponse);
@@ -204,7 +207,9 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
       const row = (await db.questionnaireResponse.findUnique({
         where: { questionnaireId_subjectId: { questionnaireId, subjectId } },
         include: {
-          subject: { select: { name: true, school: true, studentVerified: true, creditScore: true } },
+          subject: {
+            select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
+          },
         },
       })) as RawResponse | null;
       return row ? toResponse(row) : null;
@@ -235,7 +240,9 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
           status: "SUBMITTED",
         },
         include: {
-          subject: { select: { name: true, school: true, studentVerified: true, creditScore: true } },
+          subject: {
+            select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
+          },
         },
       })) as RawResponse;
       return toResponse(row);
@@ -246,7 +253,9 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
         where: { questionnaireId, score: null },
         orderBy: { submittedAt: "asc" },
         include: {
-          subject: { select: { name: true, school: true, studentVerified: true, creditScore: true } },
+          subject: {
+            select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
+          },
         },
       })) as RawResponse[];
       return rows.map(toResponse);

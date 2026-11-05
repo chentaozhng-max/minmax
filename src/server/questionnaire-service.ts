@@ -208,6 +208,19 @@ export type ResearcherResponseView = ResponseRecord & {
   answerRows: { title: string; answer: string }[];
 };
 
+/**
+ * 导出答卷的取数：先确认这门实验是本人的，再取题目与全部答卷。
+ * 没建问卷返回 null —— 空表和「没有问卷」是两件事，让 route 分开处理。
+ */
+export async function loadResponsesForExport(experimentId: string, researcherId: string) {
+  const experiment = await loadOwnedExperiment(experimentId, researcherId);
+  const questionnaire = await repo().findByExperiment(experimentId);
+  if (!questionnaire) return null;
+
+  const responses = await repo().listResponses(questionnaire.id);
+  return { experiment, questionnaire, responses };
+}
+
 export async function listResponses(experimentId: string): Promise<{
   questionnaire: QuestionnaireRecord | null;
   responses: ResearcherResponseView[];

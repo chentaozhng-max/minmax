@@ -39,6 +39,8 @@ export type ResponseRecord = {
   subjectId: string;
   subjectName: string;
   subjectSchool: string | null;
+  /** 导出答卷时和日程表口径一致：给学号，不给手机号（问卷承诺匿名） */
+  subjectStudentId: string | null;
   subjectVerified: boolean;
   subjectCredit: number;
   answers: AnswerMap;

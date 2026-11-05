@@ -198,6 +198,8 @@ prisma/
 | `publish-experiment.ts` | 发布 / 上下架 + 团体容量校验 |
 | `send-reminders.ts` | 到时提醒：挑人、生成文案、写通知 |
 | `export-schedule.ts` | 主试日程 CSV 构建（BOM / CRLF / RFC4180） |
+| `csv-format.ts` | 两份导出的公共格式：`csvCell` / `csvDateTime` / BOM / 行尾 |
+| `export-questionnaire.ts` | 答卷 CSV：一行一个被试、一列一道题，只给学号不给手机号 |
 | `assistant-overview.ts` | 助手总览：我的安排 + 撞车 |
 | `search-experiments.ts` | 跨实验搜索：资格过滤 + 排序 + 「被筛掉的要告知」 |
 | `submit-questionnaire.ts` | 被试提交答卷（重填覆盖 + 清空旧分数） |
@@ -259,7 +261,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 7 条
+#### 问卷链路（v1.4）—— 改这块先读这 9 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -278,6 +280,15 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
    `domain/experiment-rules.ts`）。**任何展示截止时间的地方都要先看 `openAnytime`**，
    否则会把 2099 印给用户；判断「是否已截止」同理（`page.tsx` 里是 `!openAnytime && deadline <= now`）。
    线下实验忽略这个开关——线下没截止时间，时段会永远挂着。
+8. **展示层必须按 `mode` 分流**：线上实验没有时段、地点、容量、报名截止，
+   这四个词出现在线上实验的页面上就是 bug（v1.4.0 一次修了七处）。
+   已经分流的落点：`components/experiment-card.tsx`、`app/experiments/[id]/page.tsx`、
+   `app/r/experiments/[id]/detail-view.tsx`、`app/r/experiments/researcher-experiments.tsx`、
+   `responses/responses-board.tsx`。**新加实验相关页面时先问一句「线上这里该显示什么」**，
+   文案也不要写成「邀请预约」——线上没有预约这回事。
+9. **答卷导出口径**：一行一个被试、一列一道题（`Q1. 题干`）；只给学号不给手机号
+   （问卷承诺匿名，学号是为了学分登记）；未作答写「（未作答）」，**不能留空**
+   ——留空进 SPSS 会变成缺失值，主试分不清「没答」和「没这题」。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -311,7 +322,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    55 个 Vitest 文件 / 637 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    56 个 Vitest 文件 / 648 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -378,7 +389,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`637 tests passed`／`✅ check-layers: 225 个文件通过（L1–L7）`／
+**验收判据是输出**：`648 tests passed`／`✅ check-layers: 228 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

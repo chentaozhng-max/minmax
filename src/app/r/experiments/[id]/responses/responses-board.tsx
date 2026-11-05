@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, RefreshCw, Send, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, RefreshCw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
@@ -134,11 +134,25 @@ export function ResponsesBoard({
   return (
     <section className="px-4 pb-10 pt-3">
       <div className="rounded-card border border-line bg-surface p-4">
-        <p className="text-[14px] font-medium text-ink">{questionnaire.title}</p>
-        <p className="mt-0.5 text-[11px] text-ink-soft">
-          {questionnaire.status === "PUBLISHED" ? "已发布" : "草稿（被试看不到）"} ·{" "}
-          {mode === "ONLINE" ? "线上实验" : "线下实验"}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[14px] font-medium text-ink">{questionnaire.title}</p>
+            <p className="mt-0.5 text-[11px] text-ink-soft">
+              {questionnaire.status === "PUBLISHED" ? "已发布" : "草稿（被试看不到）"} ·{" "}
+              {mode === "ONLINE" ? "线上实验" : "线下实验"}
+            </p>
+          </div>
+          {/* 没有答卷时不显示：空表导下去只会让人以为坏了 */}
+          {summary.total > 0 ? (
+            <a
+              href={`/api/r/experiments/${experimentId}/questionnaire/export`}
+              className="shrink-0 rounded-pill border border-line px-2.5 py-1 text-[11px] text-moss active:bg-mist"
+            >
+              <Download size={11} className="mr-1 inline align-[-1px]" />
+              导出 CSV
+            </a>
+          ) : null}
+        </div>
 
         <div className="mt-3 grid grid-cols-4 gap-2 text-center">
           {[

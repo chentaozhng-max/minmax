@@ -6,29 +6,16 @@
  *   消费者 B：CSV 导出（主试拿去实验室点名）
  * 两者都读 ScheduleQuery.listSchedule()，不各写一份查询。
  *
- * CSV 的三处细节都是为了「Excel 双击能直接打开、不乱码、不串列」：
- *   1. 开头加 UTF-8 BOM —— 没有 BOM 的 UTF-8 CSV 在中文 Windows 上会变乱码
- *   2. 字段里含逗号/引号/换行时用双引号包起来，内部引号翻倍（RFC 4180）
- *   3. 用 CRLF 行尾 —— Excel 对 LF 的兼容性不如 CRLF
+ * BOM / 转义 / CRLF 这些格式细节在 csv-format.ts，答卷导出共用同一套。
  */
 
 import type { ScheduleRow } from "@/domain/ports/schedule";
 import { appointmentStatusLabel, type AppointmentStatus } from "@/domain/constants";
-import { formatDayCN, formatHM, toShanghai } from "@/lib/time";
+import { formatDayCN, formatHM } from "@/lib/time";
+import { CSV_BOM, CSV_EOL, csvCell, csvDateTime, csvStamp, safeFilenamePart } from "./csv-format";
 
-const BOM = "\uFEFF";
-const EOL = "\r\n";
-
-/**
- * CSV 专用时间格式：带年份。
- * 页面上的 formatDateTimeCN 不带年（同一年内看足够），但导出件会被存档、
- * 会和往年的表混在一起 —— 没有年份就分不清是哪一年。
- */
-function csvDateTime(date: Date): string {
-  const p = toShanghai(date);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}`;
-}
+// 老引用（tests/schedule-export.test.ts）还从这儿拿，别删
+export { csvCell, csvDateTime };
 
 export const SCHEDULE_CSV_HEADER = [
   "时段",
@@ -46,17 +33,6 @@ export const SCHEDULE_CSV_HEADER = [
   "签到时间",
   "申诉",
 ] as const;
-
-/** RFC 4180：含逗号 / 引号 / 换行 / 首尾空格时加引号，内部引号翻倍 */
-export function csvCell(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return "";
-  const text = String(value);
-  if (text === "") return "";
-  if (/[",\r\n]/.test(text) || /^\s|\s$/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
 
 /**
  * 把日程行转成 CSV 文本。
@@ -92,7 +68,7 @@ export function buildScheduleCsv(rows: ScheduleRow[], now: Date = new Date()): s
   }
 
   void now; // 保留参数：将来可能要按 now 区分「已过期/未开始」
-  return BOM + lines.join(EOL) + EOL;
+  return CSV_BOM + lines.join(CSV_EOL) + CSV_EOL;
 }
 
 /**
@@ -100,7 +76,5 @@ export function buildScheduleCsv(rows: ScheduleRow[], now: Date = new Date()): s
  * 去掉 Windows 文件名非法字符，否则下载会失败。
  */
 export function scheduleCsvFilename(experimentTitle: string | null, now: Date = new Date()): string {
-  const safeTitle = (experimentTitle ?? "全部实验").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
-  const stamp = csvDateTime(now).replace(/[-: ]/g, "").slice(0, 8);
-  return `日程表-${safeTitle}-${stamp}.csv`;
+  return `日程表-${safeFilenamePart(experimentTitle, "全部实验")}-${csvStamp(now)}.csv`;
 }
