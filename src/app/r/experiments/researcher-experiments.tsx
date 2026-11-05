@@ -159,23 +159,26 @@ export function ResearcherExperiments({
                   </StatusPill>
                 </div>
                 <p className="mt-1 text-[12px] text-ink-soft">
-                  {row.location} · <span className="num">{row.durationMin} 分钟</span> ·{" "}
-                  {rewardLabel(row.rewardText)}
+                  {row.mode === "ONLINE" ? "线上" : row.location} ·{" "}
+                  <span className="num">{row.durationMin} 分钟</span> · {rewardLabel(row.rewardText)}
                 </p>
 
-                <div className="mt-2.5 flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-mist">
-                    <div
-                      className="h-full rounded-full bg-moss"
-                      style={{
-                        width: `${row.capacityTotal === 0 ? 0 : Math.round((row.bookedCount / row.capacityTotal) * 100)}%`,
-                      }}
-                    />
+                {/* 线上实验没有容量，0/0 的进度条只会让人以为「一个都没招到」 */}
+                {row.mode === "ONLINE" ? null : (
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-mist">
+                      <div
+                        className="h-full rounded-full bg-moss"
+                        style={{
+                          width: `${row.capacityTotal === 0 ? 0 : Math.round((row.bookedCount / row.capacityTotal) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="num shrink-0 text-[11px] text-ink-soft">
+                      {row.bookedCount}/{row.capacityTotal}
+                    </span>
                   </div>
-                  <span className="num shrink-0 text-[11px] text-ink-soft">
-                    {row.bookedCount}/{row.capacityTotal}
-                  </span>
-                </div>
+                )}
 
                 <div className="mt-2 flex items-center justify-between text-[11px] text-ink-soft">
                   <span>

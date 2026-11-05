@@ -63,3 +63,23 @@ export async function setExperimentStatus(id: string, status: string) {
     select: { id: true, status: true },
   });
 }
+
+/**
+ * 主试详情页要的三个数：收了多少份、算过分没有、通过几个。
+ * 没建问卷时全 0 —— 与「有问卷但没人填」在页面上都是 0，不用区分。
+ */
+export async function countQuestionnaireResponses(experimentId: string) {
+  const questionnaire = await prisma.questionnaire.findUnique({
+    where: { experimentId },
+    select: { id: true },
+  });
+  if (!questionnaire) return { responseTotal: 0, responseScored: 0, responsePassed: 0 };
+
+  const questionnaireId = questionnaire.id;
+  const [responseTotal, responseScored, responsePassed] = await Promise.all([
+    prisma.questionnaireResponse.count({ where: { questionnaireId } }),
+    prisma.questionnaireResponse.count({ where: { questionnaireId, score: { not: null } } }),
+    prisma.questionnaireResponse.count({ where: { questionnaireId, passed: true } }),
+  ]);
+  return { responseTotal, responseScored, responsePassed };
+}

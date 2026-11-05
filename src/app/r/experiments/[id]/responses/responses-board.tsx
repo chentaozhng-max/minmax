@@ -198,17 +198,23 @@ export function ResponsesBoard({
       </div>
 
       <div className="mt-3 rounded-card border border-line bg-surface p-4">
-        <p className="text-[13px] font-medium text-ink">邀请达标者预约</p>
+        <p className="text-[13px] font-medium text-ink">
+          {mode === "ONLINE" ? "给达标者发消息" : "邀请达标者预约"}
+        </p>
         <p className="mt-1 text-[11px] leading-5 text-ink-soft">
           {mode === "ONLINE"
-            ? "线上实验没有预约；邀请会以站内消息发给他们，用于后续实验。"
+            ? "通过筛选的人会收到站内消息，可用来约后续环节。未达标的不发。"
             : "只有被邀请的人才能选时段。未达标的不会收到消息。"}
         </p>
         <Input
           className="mt-2"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="附一句话（选填），例：请在本周内选一个时段"
+          placeholder={
+            mode === "ONLINE"
+              ? "附一句话（选填），例：请回复你方便的时间"
+              : "附一句话（选填），例：请在本周内选一个时段"
+          }
           maxLength={200}
         />
         <Button

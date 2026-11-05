@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bot, MapPin, Clock3 } from "lucide-react";
+import { Bot, MapPin, Monitor, Clock3 } from "lucide-react";
 import { VerifiedBadge } from "@/components/ui/badge";
 import { RewardTag } from "@/components/reward-tag";
 import { formatDateTimeCN, formatHM } from "@/lib/time";
@@ -39,10 +39,18 @@ export function ExperimentCard({ card }: { card: CardView }) {
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-soft">
-          <span className="inline-flex items-center gap-1">
-            <MapPin size={12} strokeWidth={1.8} />
-            {card.location}
-          </span>
+          {/* 线上实验没有场地，写「线上完成」；地点字段对它没意义，也不该把残留值露出来 */}
+          {card.mode === "ONLINE" ? (
+            <span className="inline-flex items-center gap-1">
+              <Monitor size={12} strokeWidth={1.8} />
+              线上完成
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1">
+              <MapPin size={12} strokeWidth={1.8} />
+              {card.location}
+            </span>
+          )}
           <span className="inline-flex items-center gap-1">
             <Clock3 size={12} strokeWidth={1.8} />
             <span className="num">{card.durationMin} 分钟</span>
@@ -55,7 +63,7 @@ export function ExperimentCard({ card }: { card: CardView }) {
               <span className="chip bg-[#f1f2ee] text-ink-soft">主试信誉较低</span>
             ) : null}
             {card.mode === "ONLINE" ? (
-              <span className="chip bg-moss-tint text-moss">线上 · 随时可填</span>
+              <span className="chip bg-moss-tint text-moss">线上</span>
             ) : null}
             {next ? (
               <span className="chip bg-mist text-ink-soft">
@@ -86,14 +94,17 @@ export function ExperimentCard({ card }: { card: CardView }) {
           </p>
         ) : null}
 
-        {/* AI 入口：列表里也多一条路，省得先进详情页再进对话 */}
-        <Link
-          href={`/experiments/${card.id}/chat`}
-          className="relative z-10 mt-2.5 inline-flex items-center gap-1 rounded-pill border border-moss/25 bg-moss-tint/50 px-2.5 py-1 text-[11px] text-moss active:bg-moss-tint"
-        >
-          <Bot size={12} strokeWidth={2.2} />
-          让 AI 帮我挑时段
-        </Link>
+        {/* AI 入口：列表里也多一条路，省得先进详情页再进对话。
+            线上实验没有时段可选，这个入口会把人带进一个空页面，直接不显示。 */}
+        {card.mode === "ONLINE" ? null : (
+          <Link
+            href={`/experiments/${card.id}/chat`}
+            className="relative z-10 mt-2.5 inline-flex items-center gap-1 rounded-pill border border-moss/25 bg-moss-tint/50 px-2.5 py-1 text-[11px] text-moss active:bg-moss-tint"
+          >
+            <Bot size={12} strokeWidth={2.2} />
+            让 AI 帮我挑时段
+          </Link>
+        )}
       </div>
     </div>
   );

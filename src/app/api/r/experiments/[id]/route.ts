@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, handle, ApiError } from "@/lib/http";
 import { requireRole } from "@/lib/auth";
 import { formatResearcherDetail } from "@/server/experiments";
+import { countQuestionnaireResponses } from "@/adapters/db/prisma/experiment-brief-repo";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -23,5 +24,8 @@ export const GET = handle(async (_req: Request, { params }: Params) => {
   if (!experiment) throw new ApiError(404, "实验不存在");
   if (experiment.researcherId !== researcher.id) throw new ApiError(403, "没有权限");
 
-  return ok(formatResearcherDetail(experiment));
+  // 详情页要显示「收了多少份答卷」。这个查询很轻，直接串在后面，不值得和上面抢
+  const detail = formatResearcherDetail(experiment);
+  const responseStats = await countQuestionnaireResponses(id);
+  return ok({ ...detail, ...responseStats });
 });

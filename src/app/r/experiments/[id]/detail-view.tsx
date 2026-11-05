@@ -25,6 +25,10 @@ type Detail = {
   type: string;
   mode: string;
   needsQuestionnaire: boolean;
+  /** 问卷答卷统计（没建问卷时都是 0） */
+  responseTotal: number;
+  responseScored: number;
+  responsePassed: number;
   openAnytime: boolean;
   groupSize: number | null;
   requirements: string | null;
@@ -166,6 +170,8 @@ export function ResearcherExperimentDetail({
 
   const booked = data.slots.reduce((n, s) => n + s.bookedCount, 0);
   const total = data.slots.reduce((n, s) => n + s.capacity, 0);
+  /** 线上实验没有时段、容量、预约，整个页面不该再讲这些词 */
+  const online = data.mode === "ONLINE";
   const pending = data.applicants.filter(
     (a) =>
       a.status === "AWAITING_RESEARCHER" ||
@@ -188,7 +194,11 @@ export function ResearcherExperimentDetail({
     <main className="shell tabbar-space">
       <PageHeader
         title={data.title}
-        subtitle={`${experimentStatusLabel[data.status as "PUBLISHED"] ?? data.status} · 已订 ${booked}/${total}`}
+        subtitle={
+          online
+            ? `${experimentStatusLabel[data.status as "PUBLISHED"] ?? data.status} · 线上实验`
+            : `${experimentStatusLabel[data.status as "PUBLISHED"] ?? data.status} · 已订 ${booked}/${total}`
+        }
         back="auto"
         profile={{ role: "RESEARCHER" }}
         right={
@@ -212,15 +222,37 @@ export function ResearcherExperimentDetail({
       <div className="px-4 pt-3">
         <div className="rounded-card border border-line bg-surface p-3.5">
           <p className="text-[12px] leading-5 text-ink-soft">
-            {data.location} · <span className="num">{data.durationMin} 分钟</span> ·{" "}
+            {online ? "线上填写" : data.location} · <span className="num">{data.durationMin} 分钟</span> ·{" "}
             {rewardLabel(data.rewardText)} ·{" "}
-            {data.openAnytime ? "全时段可填" : `截止 ${data.signupDeadline.slice(0, 10)}`}
+            {data.openAnytime ? "随时可填" : `截止 ${data.signupDeadline.slice(0, 10)}`}
           </p>
-          <div className="mt-2 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
-            <Stat label="待处理" value={pending} tone={pending > 0 ? "clay" : "ink"} />
-            <Stat label="已订" value={booked} />
-            <Stat label="总容量" value={total} />
-          </div>
+          {online ? (
+            // 线上实验的数字不是「订了几场」，而是「收了多少份、过了几个」
+            <>
+              <div className="mt-2 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
+                <Stat label="答卷" value={data.responseTotal} />
+                <Stat
+                  label="已通过"
+                  value={data.responsePassed}
+                  tone={data.responsePassed > 0 ? "clay" : "ink"}
+                />
+                <Stat
+                  label="待算分"
+                  value={Math.max(0, data.responseTotal - data.responseScored)}
+                  tone={data.responseTotal > data.responseScored ? "clay" : "ink"}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] leading-5 text-ink-soft">
+                被试提交问卷即算完成，不占时段。
+              </p>
+            </>
+          ) : (
+            <div className="mt-2 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
+              <Stat label="待处理" value={pending} tone={pending > 0 ? "clay" : "ink"} />
+              <Stat label="已订" value={booked} />
+              <Stat label="总容量" value={total} />
+            </div>
+          )}
         </div>
 
         {data.needsQuestionnaire ? (
@@ -233,11 +265,16 @@ export function ResearcherExperimentDetail({
               <span className="text-[11px] text-moss">管理 →</span>
             </div>
             <p className="mt-1 text-[11px] leading-5 text-ink-soft">
-              上传材料生成题目、按分数筛选、给达标者发预约邀请
+              {online
+                ? "看答卷、按分数筛选、给达标者发站内消息"
+                : "上传材料生成题目、按分数筛选、给达标者发预约邀请"}
             </p>
           </Link>
         ) : null}
 
+        {/* 线上实验没有报名和时段，这两个 tab 里永远是空的，整块不渲染 */}
+        {online ? null : (
+          <>
         <div className="mt-3 flex gap-1">
           {(
             [
@@ -369,13 +406,17 @@ export function ResearcherExperimentDetail({
             </p>
           </div>
         )}
+          </>
+        )}
 
         <div className="mt-6">
           <Button variant="danger" size="lg" block onClick={() => setCancelOpen(true)}>
             取消整场实验
           </Button>
           <p className="mt-1.5 text-center text-[11px] leading-4 text-ink-soft">
-            距各时段开始不足 24 小时的预约会记你一次未到场（-2，按累计次数禁发布）
+            {online
+              ? "取消后实验立刻关闭，已提交的问卷仍可在答卷后台查看"
+              : "距各时段开始不足 24 小时的预约会记你一次未到场（-2，按累计次数禁发布）"}
           </p>
         </div>
       </div>

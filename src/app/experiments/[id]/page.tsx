@@ -126,12 +126,17 @@ export default async function ExperimentDetailPage({
           </div>
         </div>
 
+        {/* 线上实验没有场地，「地点」这个字段对它没意义，残留值更不能给人看 */}
         <p className="mt-1.5 text-[13px] leading-5 text-ink-soft">
-          {experiment.durationMin} 分钟 · {experiment.location}
+          {experiment.mode === "ONLINE"
+            ? `${experiment.durationMin} 分钟 · 线上填写`
+            : `${experiment.durationMin} 分钟 · ${experiment.location}`}
         </p>
 
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <Tag>{experiment.type === "GROUP" ? `团体 ${experiment.groupSize ?? 2} 人` : "一对一"}</Tag>
+          {experiment.mode === "ONLINE" ? null : (
+            <Tag>{experiment.type === "GROUP" ? `团体 ${experiment.groupSize ?? 2} 人` : "一对一"}</Tag>
+          )}
           <Tag>
             {experiment.mode === "ONLINE"
               ? "线上完成"
@@ -170,10 +175,17 @@ export default async function ExperimentDetailPage({
       <section className="px-4 py-4">
         <h3 className="text-[15px] font-semibold text-ink">实验信息</h3>
         <dl className="mt-2.5 space-y-2 text-[13px] leading-5">
-          <InfoRow label="地点" value={experiment.location} />
+          {experiment.mode === "ONLINE" ? null : <InfoRow label="地点" value={experiment.location} />}
           <InfoRow
-            label="报名截止"
-            value={experiment.openAnytime ? "全时段可填写" : formatDateTimeCN(experiment.signupDeadline)}
+            // 线上没有「报名」这回事，说「问卷开放 / 截止」才不打架
+            label={
+              experiment.mode === "ONLINE"
+                ? experiment.openAnytime
+                  ? "问卷开放"
+                  : "问卷截止"
+                : "报名截止"
+            }
+            value={experiment.openAnytime ? "随时可填" : formatDateTimeCN(experiment.signupDeadline)}
           />
           <InfoRow label={experiment.mode === "ONLINE" ? "参与方式" : "剩余时段"} value={experiment.mode === "ONLINE" ? "填写问卷" : `${openSlots.length} 段`} />
           {experiment.mode === "ONLINE" ? null : (
