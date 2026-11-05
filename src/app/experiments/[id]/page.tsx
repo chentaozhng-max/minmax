@@ -74,11 +74,27 @@ export default async function ExperimentDetailPage({
       ? { label: "问卷准备中", disabled: true, reason: "主试还在编辑问卷，稍后再来" }
       : !qState.submitted
         ? { label: "先填写问卷", href: `/experiments/${experiment.id}/questionnaire` }
-        : !qState.passed
-          ? { label: "等待主试筛选", disabled: true, reason: "通过后主试会给你发消息，届时就能预约" }
-          : experiment.mode === "ONLINE"
-            ? { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
-            : null
+        : // 主试已经发消息说「这轮不匹配」了，界面不能再让人傻等
+          qState.declined
+          ? {
+              label: "本轮未入选",
+              disabled: true,
+              reason: "主试已发消息说明。之后有合适的实验会再联系你。",
+            }
+          : !qState.passed
+            ? {
+                label: "等待主试筛选",
+                disabled: true,
+                reason:
+                  experiment.mode === "ONLINE"
+                    ? "有结果后主试会给你发消息"
+                    : "通过后主试会给你发消息，届时就能预约",
+              }
+            : experiment.mode === "ONLINE"
+              ? qState.invited
+                ? { label: "已入选", disabled: true, reason: "主试会通过消息和你安排后续" }
+                : { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
+              : null
     : null;
 
   const slotViews = openSlots.map((s) => ({

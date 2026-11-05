@@ -327,6 +327,7 @@ export async function inviteByThreshold(input: {
   experimentId: string;
   researcherId: string;
   title: string;
+  mode: "ONLINE" | "OFFLINE";
   passScore: number | null;
   message?: string | null;
 }) {
@@ -344,6 +345,7 @@ export async function inviteByThreshold(input: {
       experimentId: input.experimentId,
       researcherId: input.researcherId,
       experimentTitle: input.title,
+      mode: input.mode,
       passScore: input.passScore,
       message: input.message,
     },
@@ -402,7 +404,9 @@ export async function hasPassedQuestionnaire(experimentId: string, subjectId: st
  */
 export async function getSubjectState(experimentId: string, subjectId: string | null) {
   const questionnaire = await repo().findByExperiment(experimentId);
-  if (!questionnaire) return { published: false, submitted: false, passed: false, title: "" };
+  if (!questionnaire) {
+    return { published: false, submitted: false, passed: false, declined: false, title: "" };
+  }
 
   const response = subjectId ? await repo().findResponse(questionnaire.id, subjectId) : null;
   const passed = subjectId ? await repo().hasPassed(experimentId, subjectId) : false;
@@ -410,6 +414,14 @@ export async function getSubjectState(experimentId: string, subjectId: string | 
     published: questionnaire.status === "PUBLISHED",
     submitted: Boolean(response),
     passed,
+    /**
+     * 主试已经发消息告知「本轮不匹配」。
+     * 这个状态必须单独拿出来 —— 否则详情页会继续写「等待主试筛选」，
+     * 而被试刚收到的消息说的是「暂时不能安排后续环节」，两句话对不上。
+     */
+    declined: Boolean(response?.declinedAt),
+    /** 主试已经发过「通过」的邀请消息；界面上只有这时才告诉被试「入选」 */
+    invited: Boolean(response?.invitedAt),
     title: questionnaire.title,
   };
 }

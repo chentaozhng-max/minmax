@@ -263,7 +263,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 12 条
+#### 问卷链路（v1.4）—— 改这块先读这 14 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -306,6 +306,13 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
     覆盖模型报的 `score`。**别改回「用模型的总分、分项只做展示」** —— 两者对不上时主试更不信。
     `normalizeBreakdown` 会按 `max` 截断（模型真会写「12/10」），规则版兜底没有分项（null），不硬凑。
     分项上限 6 项、维度名 20 字、依据 40 字，都是为了卡片不被撑爆。
+13. **被试详情页的 CTA 必须认 `declined` 和 `invited`**：只看 `passed` 会出两种事故 ——
+    已发「本轮不匹配」的人还在「等待主试筛选」傻等；已邀请的人看不出自己入选了。
+    顺序是：问卷准备中 → 先填写问卷 → 本轮未入选（declined）→ 等待主试筛选 →
+    已入选（invited）/ 问卷已完成。**线上实验的邀请文案不许提「时段」**（`mode` 已传进
+    `inviteQualified`）。
+14. **私信线程的 `experimentId` 跟随最新一条消息**：`notice-repo` 每次发消息都更新它。
+    一对师生只有一条线程，不改的话列表里的「来自：XX 实验」会永远停在第一门实验。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -339,7 +346,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    62 个 Vitest 文件 / 751 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    64 个 Vitest 文件 / 762 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -406,7 +413,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`751 tests passed`／`✅ check-layers: 235 个文件通过（L1–L7）`／
+**验收判据是输出**：`762 tests passed`／`✅ check-layers: 235 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

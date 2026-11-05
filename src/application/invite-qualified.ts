@@ -19,6 +19,8 @@ export type InviteQualifiedInput = {
   experimentId: string;
   researcherId: string;
   experimentTitle: string;
+  /** 线上没有时段可选，文案不能让人「去选一个时段」 */
+  mode: "ONLINE" | "OFFLINE";
   /** 达标线，0–100。null 视为「不筛选」，直接拒绝 */
   passScore: number | null;
   /** 附在邀请后面的自定义一句话 */
@@ -61,6 +63,7 @@ export async function inviteQualified(
   for (const response of pending) {
     const content = buildInviteMessage({
       title: input.experimentTitle,
+      mode: input.mode,
       score: response.score,
       threshold: input.passScore,
       message: input.message,
@@ -87,13 +90,25 @@ export async function inviteQualified(
   };
 }
 
-function buildInviteMessage(input: {
+/**
+ * 邀请文案。
+ *
+ * **线上实验没有时段可选**，所以不能让人「去选一个时段」——
+ * 那样被试点进去只会看到一个没有排期的页面，以为系统坏了。
+ * 线上只说「达到标准」，后续由主试发消息安排。
+ */
+export function buildInviteMessage(input: {
   title: string;
+  mode: "ONLINE" | "OFFLINE";
   score: number | null;
   threshold: number;
   message?: string | null;
 }): string {
   const scoreText = input.score === null ? "" : `你的问卷得分 ${input.score} 分，`;
+  const next =
+    input.mode === "ONLINE"
+      ? "已达到本轮的筛选标准。主试会通过消息和你安排后续，请留意。"
+      : `达到了 ${thresholdText(input.threshold)} 的筛选标准，可以进入预约了。去实验详情页选一个时段吧。`;
   const tail = input.message?.trim() ? `\n${input.message.trim()}` : "";
-  return `【${input.title}】${scoreText}达到了 ${thresholdText(input.threshold)} 的筛选标准，可以进入预约了。去实验详情页选一个时段吧。${tail}`;
+  return `【${input.title}】${scoreText}${next}${tail}`;
 }

@@ -73,7 +73,17 @@ export function makeNoticeRepository(db: Client): NoticePort {
 
           await tx.directThread.update({
             where: { id: threadId },
-            data: { lastMessageAt: input.at },
+            data: {
+              lastMessageAt: input.at,
+              /**
+               * 标注跟着最新一条业务消息走。
+               *
+               * 一对师生只有一条线程，但一个人可能先后参加好几门实验。
+               * 以前这里只更新 lastMessageAt，结果被试看到的「来自：XX 实验」
+               * 永远停在第一次那个实验，跟消息内容对不上。
+               */
+              experimentId: input.experimentId,
+            },
           });
         });
         return true;

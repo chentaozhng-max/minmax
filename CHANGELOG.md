@@ -104,10 +104,19 @@
     - 分项最多 6 项（再多主试也核不过来）；维度名截 20 字、依据截 40 字，防止把卡片撑爆。
     - 规则版兜底时没有分项（`scoreBreakdown` 为 null），不硬凑 —— 没算就是没算。
     - 落点：`domain/questionnaire.ts` 的 `normalizeBreakdown` / `sumBreakdown` + `tests/score-breakdown.test.ts` 12 例。
+12. **被试详情页补齐两个终态**：「本轮未入选」和「已入选」。
+    以前只要没通过就一律显示「等待主试筛选」—— 可主试已经发消息说了「这轮不匹配」，
+    详情页还让人继续等，两句话对不上。现在 `getSubjectState` 返回 `declined` / `invited`，
+    CTA 依次是：问卷准备中 → 先填写问卷 → 本轮未入选 → 等待主试筛选 → 已入选 / 问卷已完成。
+13. **线上实验的邀请文案不再让人「去选一个时段」**：原文案是给线下写的，线上根本没有时段，
+    被试点进去只会看到一个没有排期的页面。线上改成「已达到本轮的筛选标准。主试会通过消息和你安排后续」。
+14. **私信列表的「来自：XX 实验」跟着最新一条消息走**：一对师生只有一条线程，
+    `DirectThread.experimentId` 以前只在建线程那一刻写一次，于是收到「正念」的邀请、
+    标注却还挂着「睡眠质量」。`notice-repo` 现在每次发消息都顺带更新它。
 
 ### 验证（本次实测）
 
-- `npm test` → **62 文件 / 751 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm test` → **64 文件 / 762 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
 - `npm run lint:layers` → 235 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功

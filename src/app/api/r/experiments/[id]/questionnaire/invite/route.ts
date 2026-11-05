@@ -20,6 +20,7 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     experimentId: id,
     researcherId: user.id,
     title: experiment.title,
+    mode: experiment.mode,
     passScore: body.passScore,
     message: body.message ?? null,
   });
