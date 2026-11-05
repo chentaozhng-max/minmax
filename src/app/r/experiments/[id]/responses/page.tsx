@@ -79,6 +79,7 @@ export default async function ResponsesPage({
           status: r.status,
           submittedAt: r.submittedAt.toISOString(),
           invitedAt: r.invitedAt ? r.invitedAt.toISOString() : null,
+          declinedAt: r.declinedAt ? r.declinedAt.toISOString() : null,
           answers: r.answers,
         }))}
       />

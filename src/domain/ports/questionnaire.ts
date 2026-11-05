@@ -50,6 +50,8 @@ export type ResponseRecord = {
   status: "SUBMITTED" | "SCORED" | "INVITED";
   submittedAt: Date;
   invitedAt: Date | null;
+  /** 已告知「本轮不匹配」的时间；和 invitedAt 互斥 */
+  declinedAt: Date | null;
 };
 
 export type SaveQuestionnaireInput = {
@@ -114,6 +116,9 @@ export interface QuestionnaireRepository {
 
   /** 标记已发邀请，返回受影响条数 */
   markInvited(responseIds: string[], now: Date): Promise<number>;
+
+  /** 标记已告知「本轮不匹配」，返回受影响条数 */
+  markDeclined(responseIds: string[], now: Date): Promise<number>;
 
   /**
    * 这个被试是否通过了这门实验的问卷筛选。

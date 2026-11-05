@@ -390,6 +390,25 @@ export function summarizeScores(
   };
 }
 
+/**
+ * 未通过名单：给「告知未通过」用。
+ *
+ * 和 `selectQualified` 有一处不对称，是故意的：
+ * 这里**没有分数线也能选出人** —— 主试完全可以逐个手动判定（`passed=false`），
+ * 不设统一分数线。只有「既没手动判定、又没分数线」时才判定不了，返回空。
+ */
+export function selectDeclined<T extends { score: number | null; passed: boolean | null }>(
+  responses: T[],
+  passScore: number | null,
+): T[] {
+  return responses.filter((r) => {
+    if (r.passed === false) return true;
+    if (r.passed === true) return false;
+    if (passScore === null) return false;
+    return passState(r.score, passScore) === "FAIL";
+  });
+}
+
 /** 达标名单：分数 ≥ 通过线，且没被主试手动否掉 */
 export function selectQualified<T extends { score: number | null; passed: boolean | null }>(
   responses: T[],

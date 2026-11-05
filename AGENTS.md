@@ -206,6 +206,7 @@ prisma/
 | `submit-questionnaire.ts` | 被试提交答卷（重填覆盖 + 清空旧分数） |
 | `score-questionnaire.ts` | 批量计分，计分器由调用方注入 |
 | `invite-qualified.ts` | 按分数线挑人 + 逐条发通知，单条失败只计数不回滚 |
+| `notify-declined.ts` | 告知本轮不合适的人；文案不带分数与判定词（有 4 条测试盯着） |
 
 ### src/adapters/ — 适配层（唯一允许碰外部世界）
 
@@ -262,7 +263,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 9 条
+#### 问卷链路（v1.4）—— 改这块先读这 10 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -290,6 +291,12 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 9. **答卷导出口径**：一行一个被试、一列一道题（`Q1. 题干`）；只给学号不给手机号
    （问卷承诺匿名，学号是为了学分登记）；未作答写「（未作答）」，**不能留空**
    ——留空进 SPSS 会变成缺失值，主试分不清「没答」和「没这题」。
+10. **未通过的告知文案不许出现分数和判定词**：`application/notify-declined.ts` 的默认文案
+    是「这一轮的参与条件与你的情况不太匹配」，**不带分数、不用「未通过 / 不合格 / 淘汰」**。
+    `tests/notify-declined.test.ts` 里有 4 条专门盯这个，改文案前先看它们。
+    `declinedAt` 与 `invitedAt` 互斥：已告知的不会再收到，列表上有「已告知」小标。
+    另外 `selectDeclined` 与 `selectQualified` 有处刻意不一致 —— 前者**没设分数线也认手动判定**
+    （`passed=false`），因为主试完全可能逐个判而不设统一线。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -323,7 +330,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    60 个 Vitest 文件 / 723 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    61 个 Vitest 文件 / 739 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -390,7 +397,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`723 tests passed`／`✅ check-layers: 232 个文件通过（L1–L7）`／
+**验收判据是输出**：`739 tests passed`／`✅ check-layers: 234 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

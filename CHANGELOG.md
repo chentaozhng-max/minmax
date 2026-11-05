@@ -89,11 +89,16 @@
    - 旁边的「看题目分布」展开后是每题频次：单选/多选**按原选项顺序**、量表按分值升序，0 票的也留着（显示「—」而不是消失，否则看不出这个选项存在）。
    - 每题标「N 人作答（M 人跳过）」，比例以**回答人数**为分母；多选题加起来会超过 100%，这是正常的，不做归一。文本题直接列出全部回答。
    - 落点：`domain/question-stats.ts`（纯函数，无 IO）+ `tests/question-stats.test.ts` 9 例。
+9. **没通过的人也会被告知**：答卷后台「告知本轮不合适的人」，只发给「已判定为未通过、且还没告知过」的人；未算分的不发（还没判定就下结论是错的）。
+   - **文案刻意不带分数、不用「未通过 / 不合格 / 淘汰」这类判定词**。三句话分工：谢谢参与 → 说明这轮条件不匹配（不是你的问题）→ 交代数据去向与后续可能。这条是伦理要求，也关系到以后还能不能招到人。
+   - 落库 `QuestionnaireResponse.declinedAt`，与 `invitedAt` 对称且互斥；已告知的不会再收到第二次，列表上有「已告知」小标。
+   - `selectDeclined` 与 `selectQualified` 有一处**刻意不一致**：前者没设分数线也认手工判定（`passed=false`），因为主试完全可能逐个判而不设统一线。
+   - 落点：`application/notify-declined.ts` + `tests/notify-declined.test.ts` 16 例（含 4 条专门盯文案不许出现分数和判定词）。
 
 ### 验证（本次实测）
 
-- `npm test` → **60 文件 / 723 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
-- `npm run lint:layers` → 232 文件通过
+- `npm test` → **61 文件 / 739 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm run lint:layers` → 234 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
 - 真浏览器复查（headless Edge，390×844）：线上实验的首页卡片、被试详情、主试详情、主试列表、答卷后台五处均无「时段 / 地点 / 报名 / 未到场」等线下措辞；导出接口返回 200 + BOM + 正确中文文件名
@@ -103,7 +108,7 @@
 - 分数线只能整份问卷一条，不支持按题设权重
 - 扫描件 PDF 不做 OCR（提示主试换文件或直接粘题目）
 - 邀请只发站内私信，不发邮件/短信
-- 线上实验没有「已结算」状态；未通过筛选的人不会收到任何通知
+- 线上实验没有「已结算」状态
 - 分布只做描述统计，不做差异检验（t 检验 / 方差分析留给 SPSS）
 
 ---

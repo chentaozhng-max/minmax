@@ -20,6 +20,7 @@ import { loadOwnedBrief, loadOwnedBriefOrNull, loadExperimentBrief } from "./exp
 import { submitQuestionnaire } from "@/application/submit-questionnaire";
 import { scoreResponses } from "@/application/score-questionnaire";
 import { inviteQualified } from "@/application/invite-qualified";
+import { notifyDeclined } from "@/application/notify-declined";
 import { generateQuestionnaireDraft, scoreQuestionnaireResponse, suggestPassScore } from "./questionnaire-agent";
 import type { QuestionnaireRecord, ResponseRecord } from "@/domain/ports/questionnaire";
 
@@ -325,6 +326,34 @@ export async function inviteByThreshold(input: {
     });
   }
   return inviteQualified(
+    {
+      experimentId: input.experimentId,
+      researcherId: input.researcherId,
+      experimentTitle: input.title,
+      passScore: input.passScore,
+      message: input.message,
+    },
+    { repo: questionnaires, notices: makeDefaultNoticeRepository() },
+  );
+}
+
+/** 告知未通过。和邀请同一套：先把分数线同步到库里，再按当前判定发消息 */
+export async function notifyDeclinedByThreshold(input: {
+  experimentId: string;
+  researcherId: string;
+  title: string;
+  passScore: number | null;
+  message?: string | null;
+}) {
+  const questionnaires = repo();
+  const exists = await questionnaires.findByExperiment(input.experimentId);
+  if (exists && input.passScore !== null && exists.passScore !== input.passScore) {
+    await questionnaires.updateSettings(exists.id, {
+      scoringRule: exists.scoringRule,
+      passScore: input.passScore,
+    });
+  }
+  return notifyDeclined(
     {
       experimentId: input.experimentId,
       researcherId: input.researcherId,

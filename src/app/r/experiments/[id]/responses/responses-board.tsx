@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, ChevronDown, ChevronUp, Download, RefreshCw, Send, Sparkles } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronUp, Download, MailX, RefreshCw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
@@ -38,6 +38,7 @@ type Row = {
   status: string;
   submittedAt: string;
   invitedAt: string | null;
+  declinedAt: string | null;
   answers: AnswerMap;
 };
 
@@ -64,8 +65,9 @@ export function ResponsesBoard({
   );
   const [goal, setGoal] = useState("");
   const [message, setMessage] = useState("");
+  const [declineMessage, setDeclineMessage] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"suggest" | "save" | "score" | "invite" | null>(null);
+  const [busy, setBusy] = useState<"suggest" | "save" | "score" | "invite" | "decline" | null>(null);
   const [filter, setFilter] = useState<PassFilter>("ALL");
   const [showStats, setShowStats] = useState(false);
 
@@ -76,6 +78,8 @@ export function ResponsesBoard({
 
   const visible = filter === "ALL" ? responses : responses.filter((r) => r.passState === filter);
   const stats = showStats ? summarizeAnswers(questions, responses) : [];
+  /** 还没告知过的未通过者 —— 已经告知过的不该再发一次 */
+  const declinedPending = responses.filter((r) => r.passState === "FAIL" && !r.declinedAt).length;
 
   async function suggest() {
     if (!goal.trim()) return toast("先说一句你的筛选要求", "error");
@@ -136,6 +140,25 @@ export function ResponsesBoard({
       );
       toast(
         `达标 ${data.qualified} 人，本次通知 ${data.sent} 人${data.alreadyInvited ? `，${data.alreadyInvited} 人之前已通知` : ""}${data.failed ? `，${data.failed} 人发送失败` : ""}`,
+      );
+      router.refresh();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "发送失败", "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function decline() {
+    if (declinedPending === 0) return toast("没有需要告知的人", "error");
+    setBusy("decline");
+    try {
+      const data = await postJson<{ declined: number; sent: number; alreadyNotified: number; failed: number }>(
+        `/api/r/experiments/${experimentId}/questionnaire/decline`,
+        { passScore: threshold, message: declineMessage.trim() || null },
+      );
+      toast(
+        `未通过 ${data.declined} 人，本次告知 ${data.sent} 人${data.alreadyNotified ? `，${data.alreadyNotified} 人之前已告知` : ""}${data.failed ? `，${data.failed} 人发送失败` : ""}`,
       );
       router.refresh();
     } catch (error) {
@@ -257,6 +280,39 @@ export function ResponsesBoard({
         </Button>
       </div>
 
+      {/* 伦理上被筛掉的人也该被告知。没人未通过时整块不出现，别占地方 */}
+      {summary.failed > 0 ? (
+        <div className="mt-3 rounded-card border border-line bg-surface p-4">
+          <p className="text-[13px] font-medium text-ink">告知本轮不合适的人</p>
+          <p className="mt-1 text-[11px] leading-5 text-ink-soft">
+            给没通过筛选的人发一句说明。默认文案不带分数、也不用「未通过」这类词，
+            只说明这轮条件不太匹配。还没算分的人不会收到。
+          </p>
+          <Input
+            className="mt-2"
+            value={declineMessage}
+            onChange={(e) => setDeclineMessage(e.target.value)}
+            placeholder="附一句话（选填），例：感谢参与，后续有合适的实验再联系你"
+            maxLength={200}
+          />
+          <Button
+            className="mt-2"
+            size="sm"
+            block
+            variant="outline"
+            disabled={busy === "decline" || declinedPending === 0}
+            onClick={decline}
+          >
+            <MailX size={13} className="mr-1" />
+            {busy === "decline"
+              ? "发送中…"
+              : declinedPending === 0
+                ? "都已告知"
+                : `告知 ${declinedPending} 人`}
+          </Button>
+        </div>
+      ) : null}
+
       <div className="mt-4 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-[14px] font-medium text-ink">
@@ -355,6 +411,11 @@ export function ResponsesBoard({
                 >
                   {row.score === null ? "待评" : `${row.score} 分`}
                 </span>
+                {row.declinedAt ? (
+                  <span className="shrink-0 rounded-full bg-mist px-1.5 py-0.5 text-[10px] text-ink-soft">
+                    已告知
+                  </span>
+                ) : null}
                 {open ? <ChevronUp size={15} className="text-ink-soft" /> : <ChevronDown size={15} className="text-ink-soft" />}
               </button>
 

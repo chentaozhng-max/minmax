@@ -343,6 +343,8 @@ model QuestionnaireResponse {
   submittedAt     DateTime @default(now())
   scoredAt        DateTime?
   invitedAt       DateTime?
+  /// 已把「本轮条件不匹配」告知被试的时间。与 invitedAt 对称，两者互斥
+  declinedAt      DateTime?
 
   questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
   subject       User          @relation(fields: [subjectId], references: [id], onDelete: Cascade)

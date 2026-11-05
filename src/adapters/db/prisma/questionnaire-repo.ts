@@ -57,6 +57,7 @@ type RawResponse = {
   status: string;
   submittedAt: Date;
   invitedAt: Date | null;
+  declinedAt: Date | null;
   subject?: { name: string; school: string | null; studentId: string | null; studentVerified: boolean; creditScore: number };
 };
 
@@ -112,6 +113,7 @@ function toResponse(row: RawResponse): ResponseRecord {
     status: (row.status as ResponseRecord["status"]) ?? "SUBMITTED",
     submittedAt: row.submittedAt,
     invitedAt: row.invitedAt,
+    declinedAt: row.declinedAt,
   };
 }
 
@@ -279,6 +281,17 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
       const result = (await db.questionnaireResponse.updateMany({
         where: { id: { in: responseIds } },
         data: { invitedAt: now, status: "INVITED" },
+      })) as { count: number };
+      return result.count;
+    },
+
+    async markDeclined(responseIds, now) {
+      if (responseIds.length === 0) return 0;
+      // 不动 status：答卷本身还是「已算分」，只是多了一条「已告知」的记录。
+      // 改 status 会让人以为被试做了别的动作。
+      const result = (await db.questionnaireResponse.updateMany({
+        where: { id: { in: responseIds } },
+        data: { declinedAt: now },
       })) as { count: number };
       return result.count;
     },
