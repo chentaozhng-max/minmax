@@ -16,16 +16,16 @@
  */
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/http";
-import { makeAssistantThreadRepository } from "@/adapters/db/prisma/assistant-thread-repo";
+import { makeSessionStore } from "@/adapters/db/prisma/session-store-repo";
 import { makeExperimentSearch } from "@/adapters/db/prisma/experiment-search";
 import { makeSchedulingQuery } from "@/adapters/db/prisma/scheduling-query";
 import { searchExperiments, type SearchSubject } from "@/application/search-experiments";
 import { createAssistantToolRegistry } from "@/tools";
 import type { AssistantContext, AssistantSearchPayload } from "@/tools/assistant-context";
-import type { AssistantThreadMessage } from "@/domain/ports/assistant-thread";
+import type { SessionMessage } from "@/domain/session-messages";
 import { getLlm, type LlmMessage } from "@/adapters/llm";
 
-const threads = makeAssistantThreadRepository(prisma as never);
+const sessions = makeSessionStore(prisma as never);
 const experimentSearch = makeExperimentSearch(prisma as never);
 const schedulingQuery = makeSchedulingQuery(prisma);
 const toolRegistry = createAssistantToolRegistry();
@@ -38,8 +38,16 @@ const MAX_STORED_MESSAGES = 20;
 /** 一轮里最多让模型连调几次工具 */
 const MAX_TOOL_STEPS = 3;
 
+/**
+ * 「还算接着聊」的窗口。
+ *
+ * 阶段 2 先用它顶住「一人一条永不更换」的老行为：不传真实 sessionId 时取最近
+ * 30 分钟内活跃的那条。阶段 3 起 sessionId 由前端带上来，这个窗口退化成兜底。
+ */
+const RESUME_WINDOW_MS = 30 * 60 * 1000;
+
 export type AssistantChatResult = {
-  messages: AssistantThreadMessage[];
+  messages: SessionMessage[];
   /** true = 这轮是降级（没配 LLM 或模型炸了），页面照常可看列表 */
   degraded: boolean;
   notice: string | null;
@@ -48,7 +56,7 @@ export type AssistantChatResult = {
 /* ---------------- 读出当前视图 ---------------- */
 
 export async function getAssistantChatView(subjectId: string): Promise<AssistantChatResult> {
-  const thread = await threads.findBySubject(subjectId);
+  const thread = await findSession(subjectId, new Date());
   const stored = thread?.messages ?? [];
   if (stored.length > 0) return { messages: stored, degraded: false, notice: null };
 
@@ -73,8 +81,9 @@ export async function sendAssistantTurn(params: {
   const subject = await loadSubject(params.subjectId);
   if (!subject) throw new ApiError(404, "用户不存在");
 
-  const thread = await threads.findBySubject(params.subjectId);
-  const history: AssistantThreadMessage[] = [...(thread?.messages ?? [])];
+  // 没有活会话就开一条：这正是「每次打开网站 = 新 session」的落点
+  const thread = (await findSession(params.subjectId, now)) ?? (await sessions.create(params.subjectId));
+  const history: SessionMessage[] = [...thread.messages];
   history.push({ role: "user", content: params.text, createdAt: now.toISOString() });
 
   const ctx = makeAssistantContext(subject, now);
@@ -82,7 +91,7 @@ export async function sendAssistantTurn(params: {
   if (!getLlm().configured()) {
     // 没配模型也要能用：直接搜一次。门厅的价值是「找到实验」，聊天只是包装。
     history.push(await runSearchFallback(ctx, now));
-    await save(params.subjectId, history);
+    await save(thread.id, thread.summary, history);
     return { messages: history, degraded: true, notice: "助手暂时只能给你直接搜到的列表" };
   }
 
@@ -91,7 +100,7 @@ export async function sendAssistantTurn(params: {
   } catch (error) {
     console.error("[assistant-agent] llm failed", error);
     history.push(await runSearchFallback(ctx, now));
-    await save(params.subjectId, history);
+    await save(thread.id, thread.summary, history);
     return {
       messages: history,
       degraded: true,
@@ -99,11 +108,16 @@ export async function sendAssistantTurn(params: {
     };
   }
 
-  await save(params.subjectId, history);
+  await save(thread.id, thread.summary, history);
   return { messages: history, degraded: false, notice: null };
 }
 
 /* ---------------- 内部 ---------------- */
+
+/** 最近窗口内的活会话；没有则 null（调用方决定是否新建） */
+async function findSession(subjectId: string, now: Date) {
+  return sessions.findActiveBySubject(subjectId, new Date(now.getTime() - RESUME_WINDOW_MS));
+}
 
 async function loadSubject(subjectId: string): Promise<SearchSubject | null> {
   const profile = await schedulingQuery.findSubjectProfile(subjectId);
@@ -153,7 +167,7 @@ function makeAssistantContext(subject: SearchSubject, now: Date): AssistantConte
 async function runSearchFallback(
   ctx: AssistantContext,
   now: Date,
-): Promise<AssistantThreadMessage> {
+): Promise<SessionMessage> {
   const payload = await ctx.search({});
   return {
     role: "assistant",
@@ -178,7 +192,7 @@ async function runSearchFallback(
  * 否则下一轮会被 provider 判为「assistant 的 tool_calls 没有跟随 tool 消息」而 400。
  */
 async function runToolLoop(
-  history: AssistantThreadMessage[],
+  history: SessionMessage[],
   ctx: AssistantContext,
   now: Date,
 ): Promise<void> {
@@ -194,7 +208,7 @@ async function runToolLoop(
       return;
     }
 
-    const record: AssistantThreadMessage = {
+    const record: SessionMessage = {
       role: "assistant",
       content: reply.content,
       createdAt: new Date().toISOString(),
@@ -221,7 +235,7 @@ async function runToolLoop(
 }
 
 /** 把持久化消息转成 OpenAI 兼容格式（与 agent.ts 同构，不做 provider 特有处理） */
-function toLlmMessages(history: AssistantThreadMessage[]): LlmMessage[] {
+function toLlmMessages(history: SessionMessage[]): LlmMessage[] {
   const out: LlmMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
   for (const m of history) {
     if (m.role === "user") {
@@ -275,7 +289,8 @@ const SYSTEM_PROMPT = [
   "4. 全程用中文。",
 ].join("\n");
 
-async function save(subjectId: string, messages: AssistantThreadMessage[]): Promise<void> {
-  // 只留最近若干条：门厅不需要翻旧账，长历史只增加 token 与混乱
-  await threads.saveMessages(subjectId, messages.slice(-MAX_STORED_MESSAGES));
+async function save(id: string, summary: string | null, messages: SessionMessage[]): Promise<void> {
+  // 阶段 2 的保留策略仍是「只留最近若干条」——真压缩在阶段 3 接上。
+  // 走 SessionStore 而不是老仓储：老端口按 subjectId 唯一，写不出第二条会话。
+  await sessions.save(id, { messages: messages.slice(-MAX_STORED_MESSAGES), summary });
 }

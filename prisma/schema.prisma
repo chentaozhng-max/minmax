@@ -192,13 +192,28 @@ model ChatSession {
 model AssistantThread {
   id        String   @id @default(cuid())
   subjectId String
-  messages  String   @default("[]") // JSON 字符串，只留最近若干条用于回放
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  messages  String   @default("[]") // JSON 字符串，折叠态（tool result 挂在 assistant 上）
+  // ── 会话化（一个被试可以有很多条，任意时刻至多一条活会话）────────
+  // 没有 status 枚举：endedAt === null 就是活的。加枚举是重复表达，
+  // 而且「软结束可复活」用一个字段表达不了（要靠 outcome 之外的东西）。
+  messageCount Int       @default(0) // 压缩前的条数，审计用（messages 会被压缩变短）
+  summary      String? // 第 2 层压缩产物：结构化条件 + 梗概。null = 还没压过
+  outcome      String? // SessionEndReason
+  outcomeRef   String? // 产生的业务结果 id（如 appointmentId），用于追溯
+  endedAt      DateTime? // null = 活会话
+  // 「软结束」（用户说"我再看看"）不是结束，只是下次说话要显式复活。
+  // 单开一列而不是塞进 outcome：outcome 记的是「为什么结束」，把 SEALED 塞进去
+  // 会让「这条是不是结束了」要靠解析字符串，而查询条件里最需要的正是这个布尔。
+  sealedAt     DateTime?
+  lastActiveAt DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   subject User @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
-  @@unique([subjectId])
+  // 拆掉 @@unique([subjectId]) —— 那正是「一人一条永不更换」的根源。
+  // 换成「按人 + 最近活跃」的索引，取活会话 / 列出历史都走它。
+  @@index([subjectId, lastActiveAt])
 }
 
 model CreditEvent {

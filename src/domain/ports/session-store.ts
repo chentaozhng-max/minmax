@@ -47,6 +47,14 @@ export type AssistantSessionRecord = {
   /** 产生的业务结果 id（appointmentId 等），用来追溯 */
   outcomeRef: string | null;
   endedAt: Date | null;
+  /**
+   * 软结束时间（null = 没被软结束）。
+   *
+   * 单开一列而不是塞进 outcome：`outcome` 记的是「为什么结束」，而「现在能不能
+   * 直接续接」是查询里最常用的条件 —— 让它变成一个能进 where 的时间字段，
+   * 比每次解析字符串判等可靠。
+   */
+  sealedAt: Date | null;
   createdAt: Date;
   lastActiveAt: Date;
 };
@@ -55,6 +63,11 @@ export type AssistantSessionRecord = {
 export type SessionSaveInput = {
   messages: SessionMessage[];
   summary: string | null;
+  /**
+   * 压缩前的原始条数。只在发生压缩时由调用方给出（审计用）；
+   * 不给则不动这一列 —— 压缩后 `messages` 会变短，用它的长度当历史长度是错的。
+   */
+  messageCount?: number;
 };
 
 export interface SessionStore {
