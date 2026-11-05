@@ -223,7 +223,30 @@ async function resolveSession(subjectId: string, sessionId: string | undefined, 
     if (!active.sealedAt) return { record: active, created: false };
   }
 
+  // 开新会话前先把「过了窗口还挂着的活会话」结掉。
+  // 不做这一步，DB 里会长出一堆 endedAt=null 的僵尸会话：取活会话时虽然
+  // 按 lastActiveAt 倒序能取对，但「这个人的活会话有几条」永远查不清，
+  // 兜底清扫也会把它们当成新鲜会话（lastActiveAt 被别的写操作推过）。
+  await closeStaleSessions(subjectId, idleCutoff(now));
   return { record: await sessions.create(subjectId), created: true };
+}
+
+/**
+ * 把该被试所有「过了空闲窗口还活着」的会话标成 SUPERSEDED。
+ *
+ * 用 `SUPERSEDED` 而不是 `IDLE`：这两者语义不同 —— IDLE 是「他自己走开了」，
+ * SUPERSEDED 是「他的新会话已经开出来了，这条没有复活可能」。后者更准确地
+ * 解释了为什么它被结掉，排障时不用再猜。
+ */
+async function closeStaleSessions(subjectId: string, cutoff: Date): Promise<void> {
+  // 正常情况下最多 1 条（活会话本就该只有一条），循环只是防御历史脏数据。
+  // 上限 10 次是硬护栏：真出现 100 条僵尸会话说明别处有 bug，
+  // 这里不该替它擦屁股擦到把请求卡住。
+  for (let i = 0; i < 10; i += 1) {
+    const stale = await sessions.findActiveBySubject(subjectId, new Date(0));
+    if (!stale || stale.lastActiveAt >= cutoff) return;
+    await sessions.finalize(stale.id, "SUPERSEDED");
+  }
 }
 
 /** 一轮 = 一条 user 消息（工具轮次不算，否则触发点会随工具调用次数漂移） */
