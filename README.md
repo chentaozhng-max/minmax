@@ -87,7 +87,7 @@ npm run dev       # http://localhost:3000
 ## 做到什么程度
 
 ```
-61 个测试文件 / 739 用例      npm test             纯逻辑 + 适配器 + 页面查询，全绿
+62 个测试文件 / 751 用例      npm test             纯逻辑 + 适配器 + 页面查询，全绿
 62 项数据库级验收            npm run accept       防超卖 / 禁期阶梯 / 取消结算 / 签到 / 申诉超时
 235 个文件分层检查           npm run lint:layers  L1–L7 硬红线 + 棘轮
 29 个页面 / 43 个 API 路由

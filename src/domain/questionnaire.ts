@@ -349,6 +349,65 @@ export function formatAnswer(question: QuestionForScoring, value: AnswerValue | 
 
 export type PassState = "PASS" | "FAIL" | "UNKNOWN";
 
+/* ─────────────────────────────────────────────
+ * 计分分项
+ *
+ * 一句话理由解决不了「92 分是怎么来的」。分项是给主试复算用的：
+ * 各分项相加必须等于总分，否则这套解释没有意义 —— 所以总分由
+ * `sumBreakdown` 算出来，而不是另取模型给的数字。
+ * ───────────────────────────────────────────── */
+
+export type ScoreItem = {
+  /** 评分维度，例：练习频率 */
+  item: string;
+  points: number;
+  /** 这一项的满分；模型没给就是 null */
+  max: number | null;
+  /** 一句话说明，例：从不练习 */
+  note: string | null;
+};
+
+/** 超过 6 项就不看了：主试也没法逐条核对 */
+export const MAX_SCORE_ITEMS = 6;
+
+/**
+ * 把模型给的 breakdown 归一成可控形状。
+ *
+ * 模型偶尔会给出奇怪的东西（字符串、对象数组、points 是「12 分」），
+ * 这里全部当脏数据处理 —— 宁可不显示分项，也不能让页面崩或算出乱数。
+ */
+export function normalizeBreakdown(input: unknown): ScoreItem[] | null {
+  if (!Array.isArray(input)) return null;
+
+  const items: ScoreItem[] = [];
+  for (const raw of input.slice(0, MAX_SCORE_ITEMS)) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const item = str(row.item).slice(0, 20);
+    const rawPoints = Number(row.points);
+    if (!item || !Number.isFinite(rawPoints)) continue;
+
+    const maxRaw = Number(row.max);
+    const max = Number.isFinite(maxRaw) && maxRaw > 0 ? Math.round(maxRaw) : null;
+    const points = Math.max(0, Math.round(rawPoints));
+    items.push({
+      item,
+      // 模型会写出「12/10」这种超过满分的项 —— 按上限截断，不然主试一眼就发现不对
+      points: max === null ? points : Math.min(points, max),
+      max,
+      note: str(row.note).slice(0, 40) || null,
+    });
+  }
+
+  return items.length > 0 ? items : null;
+}
+
+/** 分项之和，截到 0–100 与总分同量纲 */
+export function sumBreakdown(items: ScoreItem[]): number {
+  const total = items.reduce((sum, item) => sum + item.points, 0);
+  return Math.max(0, Math.min(100, Math.round(total)));
+}
+
 /** 分数与通过线的关系。分数未知时一律 UNKNOWN，不能默认「通过」 */
 export function passState(score: number | null | undefined, passScore: number | null | undefined): PassState {
   if (score === null || score === undefined) return "UNKNOWN";

@@ -9,6 +9,7 @@ import type {
   AnswerMap,
   QuestionDraft,
   QuestionnaireDraft,
+  ScoreItem,
 } from "@/domain/questionnaire";
 
 export type QuestionRecord = {
@@ -46,6 +47,8 @@ export type ResponseRecord = {
   answers: AnswerMap;
   score: number | null;
   scoreReason: string | null;
+  /** 分项计分；null = 规则版兜底或还没算分 */
+  scoreBreakdown: ScoreItem[] | null;
   passed: boolean | null;
   status: "SUBMITTED" | "SCORED" | "INVITED";
   submittedAt: Date;
@@ -75,6 +78,8 @@ export type UpsertResponseInput = {
 export type ScoreUpdate = {
   score: number | null;
   reason: string | null;
+  /** 分项计分；null 表示这次没算出来（比如规则版兜底） */
+  breakdown: ScoreItem[] | null;
   passed: boolean | null;
   scoredAt: Date | null;
 };

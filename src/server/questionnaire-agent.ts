@@ -9,11 +9,14 @@
 import { getLlm, type LlmMessage } from "@/adapters/llm";
 import {
   composeQuestionnaireFromText,
+  normalizeBreakdown,
   normalizeQuestionnaireDraft,
   passState,
+  sumBreakdown,
   type AnswerMap,
   type QuestionnaireDraft,
   type QuestionForScoring,
+  type ScoreItem,
 } from "@/domain/questionnaire";
 import type { QuestionnaireRecord } from "@/domain/ports/questionnaire";
 
@@ -161,6 +164,8 @@ export type ScoreResponseInput = {
 export type ScoreResponseResult = {
   score: number | null;
   reason: string;
+  /** 分项；null = 没算出来（规则版兜底 / 模型没给） */
+  breakdown: ScoreItem[] | null;
   mode: "llm" | "fallback";
 };
 
@@ -168,7 +173,7 @@ export async function scoreQuestionnaireResponse(
   input: ScoreResponseInput,
 ): Promise<ScoreResponseResult> {
   if (!getLlm().configured()) {
-    return { score: null, reason: "模型未配置，需要主试手动评分", mode: "fallback" };
+    return { score: null, reason: "模型未配置，需要主试手动评分", breakdown: null, mode: "fallback" };
   }
 
   const answerText = input.rendered
@@ -196,22 +201,42 @@ export async function scoreQuestionnaireResponse(
       ],
       tools: [],
       temperature: 0.1,
-      maxTokens: 500,
+      // 500 装不下 breakdown（2-6 项 × 四个字段），给到 700
+      maxTokens: 700,
     });
-    const parsed = extractJson(reply.content) as { score?: unknown; reason?: unknown } | null;
+    const parsed = extractJson(reply.content) as {
+      score?: unknown;
+      reason?: unknown;
+      breakdown?: unknown;
+    } | null;
+
+    // 分项能算出来就以分项之和为总分 —— 主试拿得到手加得出来，这套解释才站得住。
+    // 只有模型没给可用分项时才退回它自己的 score。
+    const breakdown = normalizeBreakdown(parsed?.breakdown);
     const rawScore = Number(parsed?.score);
-    if (!Number.isFinite(rawScore)) {
-      return { score: null, reason: "模型没有给出有效分数，需要主试手动评分", mode: "fallback" };
+    const score = breakdown
+      ? sumBreakdown(breakdown)
+      : Number.isFinite(rawScore)
+        ? Math.max(0, Math.min(100, Math.round(rawScore)))
+        : null;
+
+    if (score === null) {
+      return {
+        score: null,
+        reason: "模型没有给出有效分数，需要主试手动评分",
+        breakdown: null,
+        mode: "fallback",
+      };
     }
-    const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+
     const reason =
       typeof parsed?.reason === "string" && parsed.reason.trim()
         ? parsed.reason.trim().slice(0, 300)
         : "模型未给出理由";
-    return { score, reason, mode: "llm" };
+    return { score, reason, breakdown, mode: "llm" };
   } catch (error) {
     console.error("[questionnaire-agent] score failed", describeError(error));
-    return { score: null, reason: "模型调用失败，需要主试手动评分", mode: "fallback" };
+    return { score: null, reason: "模型调用失败，需要主试手动评分", breakdown: null, mode: "fallback" };
   }
 }
 
@@ -330,7 +355,11 @@ const GENERATE_SYSTEM_PROMPT = [
 
 const SCORE_SYSTEM_PROMPT = [
   "你是心理学实验的问卷评分员。按主试给出的评分要求给这份答卷打分。",
-  "只输出 JSON：{\"score\": 0-100 的整数, \"reason\": \"不超过 60 字，说明扣分点\"}。",
+  "只输出 JSON，三个字段：",
+  '  "score"：0-100 的整数总分',
+  '  "reason"：不超过 60 字，说明主要的扣分点',
+  '  "breakdown"：分项数组，2-6 项，每项 { "item": 维度名（≤10字）, "points": 该项得分, "max": 该项满分, "note": 一句话依据（≤20字） }',
+  "breakdown 必须覆盖全部评分维度，各项 points 之和要等于 score —— 主试会拿它逐项复算。",
   "评分要稳定：同样的答案每次应得到相近的分数。只依据评分要求，不要臆测被试的动机。",
   "如果某题未作答，按缺失处理并在 reason 里提一句，不要因此直接给 0 分。",
 ].join("\n");

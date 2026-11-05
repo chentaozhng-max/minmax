@@ -75,6 +75,7 @@ export default async function ResponsesPage({
           credit: r.subjectCredit,
           score: r.score,
           reason: r.scoreReason,
+          breakdown: r.scoreBreakdown,
           passed: r.passed,
           passState: r.passState,
           status: r.status,

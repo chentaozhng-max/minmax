@@ -34,6 +34,8 @@ type Row = {
   credit: number;
   score: number | null;
   reason: string | null;
+  /** 分项计分：各分项之和 = score，给主试逐项复算用 */
+  breakdown: { item: string; points: number; max: number | null; note: string | null }[] | null;
   passed: boolean | null;
   passState: PassState;
   status: string;
@@ -442,6 +444,34 @@ export function ResponsesBoard({
                     <p className="mb-2 rounded-[6px] bg-mist/60 px-2.5 py-2 text-[11px] leading-5 text-ink-soft">
                       评分理由：{row.reason}
                     </p>
+                  ) : null}
+
+                  {/* 分项：主试要能自己加出总分，不然「92 分」还是黑箱 */}
+                  {row.breakdown && row.breakdown.length > 0 ? (
+                    <div className="mb-2 rounded-[6px] border border-line px-2.5 py-2">
+                      <p className="text-[10px] text-ink-soft">分项</p>
+                      <div className="mt-1 space-y-0.5">
+                        {row.breakdown.map((part, i) => (
+                          <div key={i} className="flex items-baseline justify-between gap-2">
+                            <span className="text-[11px] leading-5 text-ink">
+                              {part.item}
+                              {part.note ? (
+                                <span className="ml-1 text-[10px] text-ink-soft">{part.note}</span>
+                              ) : null}
+                            </span>
+                            <span className="num shrink-0 text-[11px] text-ink">
+                              {part.points}
+                              {part.max !== null ? (
+                                <span className="text-ink-soft">/{part.max}</span>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="num mt-1 border-t border-line pt-1 text-[10px] text-ink-soft">
+                        合计 {row.breakdown.reduce((sum, part) => sum + part.points, 0)} 分
+                      </p>
+                    </div>
                   ) : null}
                   <div className="space-y-2">
                     {questions.map((q, i) => (

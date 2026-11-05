@@ -263,7 +263,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 11 条
+#### 问卷链路（v1.4）—— 改这块先读这 12 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -302,6 +302,10 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
     （`subjectHasResponse`）。**少任何一道，拿到一个 userId 就能给平台上任何人发消息。**
     建的线程走现有私信体系，前端跳到 `/messages/[id]` —— 主试也能打开那个页面，
     `DmChat` 已按 role 处理返回路径。
+12. **总分 = 分项之和**：`scoreQuestionnaireResponse` 解析出 `breakdown` 后，用 `sumBreakdown`
+    覆盖模型报的 `score`。**别改回「用模型的总分、分项只做展示」** —— 两者对不上时主试更不信。
+    `normalizeBreakdown` 会按 `max` 截断（模型真会写「12/10」），规则版兜底没有分项（null），不硬凑。
+    分项上限 6 项、维度名 20 字、依据 40 字，都是为了卡片不被撑爆。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -335,7 +339,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    61 个 Vitest 文件 / 739 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    62 个 Vitest 文件 / 751 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -402,7 +406,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`739 tests passed`／`✅ check-layers: 235 个文件通过（L1–L7）`／
+**验收判据是输出**：`751 tests passed`／`✅ check-layers: 235 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

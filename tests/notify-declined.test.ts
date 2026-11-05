@@ -16,6 +16,7 @@ function response(over: Partial<ResponseRecord> & { id: string }): ResponseRecor
     answers: {},
     score: 40,
     scoreReason: null,
+    scoreBreakdown: null,
     passed: false,
     status: "SCORED",
     submittedAt: new Date("2026-11-05T02:00:00.000Z"),

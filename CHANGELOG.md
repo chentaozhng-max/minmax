@@ -98,10 +98,16 @@
     - 两道闸：实验必须是自己名下的；**这个人必须在这门实验交过答卷**。否则拿到一个 userId 就能给平台上任何人发消息。
     - 走的是现有的私信体系（`openThread` + `DirectThread`/`DirectMessage`），没新造一套。
     - 主试「消息」页的空态文案跟着改了：现在主试也能主动发起，不只是「等被试找你」。
+11. **分数能拆开看了**：每份答卷的评分理由下面多一块「分项」——练习频率 10/20、情绪觉察 12/20……底部一行「合计 X 分」。
+    - **总分由分项之和决定**，不是模型另报一个数。主试要能拿笔加得出来，这套解释才站得住；两者打架时以分项为准。
+    - 模型真会写出「12/10」这种超过满分的项，`normalizeBreakdown` 按 `max` 截断。
+    - 分项最多 6 项（再多主试也核不过来）；维度名截 20 字、依据截 40 字，防止把卡片撑爆。
+    - 规则版兜底时没有分项（`scoreBreakdown` 为 null），不硬凑 —— 没算就是没算。
+    - 落点：`domain/questionnaire.ts` 的 `normalizeBreakdown` / `sumBreakdown` + `tests/score-breakdown.test.ts` 12 例。
 
 ### 验证（本次实测）
 
-- `npm test` → **61 文件 / 739 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm test` → **62 文件 / 751 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
 - `npm run lint:layers` → 235 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功

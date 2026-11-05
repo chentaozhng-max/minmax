@@ -14,7 +14,7 @@ import type {
   UpsertResponseInput,
   ScoreUpdate,
 } from "@/domain/ports/questionnaire";
-import type { AnswerMap, QuestionnaireDraft } from "@/domain/questionnaire";
+import type { AnswerMap, QuestionnaireDraft, ScoreItem } from "@/domain/questionnaire";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Client = {
@@ -53,6 +53,7 @@ type RawResponse = {
   answers: string;
   score: number | null;
   scoreReason: string | null;
+  scoreBreakdown: string | null;
   passed: boolean | null;
   status: string;
   submittedAt: Date;
@@ -109,6 +110,7 @@ function toResponse(row: RawResponse): ResponseRecord {
     answers: parseJson<AnswerMap>(row.answers, {}),
     score: row.score,
     scoreReason: row.scoreReason,
+    scoreBreakdown: parseJson<ScoreItem[] | null>(row.scoreBreakdown, null),
     passed: row.passed,
     status: (row.status as ResponseRecord["status"]) ?? "SUBMITTED",
     submittedAt: row.submittedAt,
@@ -269,6 +271,8 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
         data: {
           score: update.score,
           scoreReason: update.reason,
+          // 序列化只在这里做，领域层只看到数组
+          scoreBreakdown: update.breakdown ? JSON.stringify(update.breakdown) : null,
           passed: update.passed,
           scoredAt: update.scoredAt,
           status: update.score === null ? "SUBMITTED" : "SCORED",

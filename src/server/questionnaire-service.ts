@@ -305,6 +305,7 @@ export async function submitForSubject(input: {
   await repo().saveScore(saved.id, {
     score: result.score,
     reason: result.reason,
+    breakdown: result.breakdown,
     passed: result.score === null ? null : passState(result.score, questionnaire.passScore) === "PASS",
     scoredAt: result.score === null ? null : new Date(),
   });

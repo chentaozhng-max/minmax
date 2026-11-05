@@ -6,7 +6,7 @@
  * 测试里塞一个同步函数就能验完整链路，不需要联网。
  */
 
-import { formatAnswer, passState } from "@/domain/questionnaire";
+import { formatAnswer, passState, type ScoreItem } from "@/domain/questionnaire";
 import type { QuestionnaireRepository, ResponseRecord } from "@/domain/ports/questionnaire";
 
 export type ResponseScorer = (input: {
@@ -14,7 +14,7 @@ export type ResponseScorer = (input: {
   questions: { id: string; type: string; title: string; options: string[] }[];
   answers: Record<string, string | string[] | number>;
   rendered: { title: string; answer: string }[];
-}) => Promise<{ score: number | null; reason: string }>;
+}) => Promise<{ score: number | null; reason: string; breakdown?: ScoreItem[] | null }>;
 
 export type ScoreRunResult = {
   total: number;
@@ -75,6 +75,7 @@ export async function scoreResponses(
     await deps.repo.saveScore(response.id, {
       score: result.score,
       reason: result.reason,
+      breakdown: result.breakdown ?? null,
       // 有分数才判通过；没有分数保持未知，等人工
       passed: result.score === null ? null : passState(result.score, questionnaire.passScore) === "PASS",
       scoredAt: result.score === null ? null : now,

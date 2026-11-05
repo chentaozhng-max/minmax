@@ -336,6 +336,8 @@ model QuestionnaireResponse {
   /// null = 还没算分（模型不可用或未触发）
   score           Int?
   scoreReason     String?
+  /// JSON: [{ item, points, max, note }] —— 分项计分，各分项之和 = score
+  scoreBreakdown  String?
   /// null = 未判定；true/false 由计分结果或主试手动改
   passed          Boolean?
   /// SUBMITTED | SCORED | INVITED
