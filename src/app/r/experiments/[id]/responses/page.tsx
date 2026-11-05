@@ -68,6 +68,7 @@ export default async function ResponsesPage({
         }))}
         responses={responses.map((r) => ({
           id: r.id,
+          subjectId: r.subjectId,
           name: r.subjectName,
           school: r.subjectSchool,
           verified: r.subjectVerified,

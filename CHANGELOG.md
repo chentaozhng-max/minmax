@@ -94,11 +94,15 @@
    - 落库 `QuestionnaireResponse.declinedAt`，与 `invitedAt` 对称且互斥；已告知的不会再收到第二次，列表上有「已告知」小标。
    - `selectDeclined` 与 `selectQualified` 有一处**刻意不一致**：前者没设分数线也认手工判定（`passed=false`），因为主试完全可能逐个判而不设统一线。
    - 落点：`application/notify-declined.ts` + `tests/notify-declined.test.ts` 16 例（含 4 条专门盯文案不许出现分数和判定词）。
+10. **可以单独找某个被试聊**：展开一份答卷，底部有「发消息」。点了会建（或复用）私信线程再跳到对话页，能看见之前的往来 —— 比在后台弹个输入框更接近真实用法。
+    - 两道闸：实验必须是自己名下的；**这个人必须在这门实验交过答卷**。否则拿到一个 userId 就能给平台上任何人发消息。
+    - 走的是现有的私信体系（`openThread` + `DirectThread`/`DirectMessage`），没新造一套。
+    - 主试「消息」页的空态文案跟着改了：现在主试也能主动发起，不只是「等被试找你」。
 
 ### 验证（本次实测）
 
 - `npm test` → **61 文件 / 739 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
-- `npm run lint:layers` → 234 文件通过
+- `npm run lint:layers` → 235 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
 - 真浏览器复查（headless Edge，390×844）：线上实验的首页卡片、被试详情、主试详情、主试列表、答卷后台五处均无「时段 / 地点 / 报名 / 未到场」等线下措辞；导出接口返回 200 + BOM + 正确中文文件名

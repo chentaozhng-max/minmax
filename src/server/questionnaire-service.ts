@@ -210,6 +210,19 @@ export type ResearcherResponseView = ResponseRecord & {
 };
 
 /**
+ * 这个人是否在这门实验交过答卷。
+ *
+ * 主试发起私信前必须过这一关 —— 否则拿到一个 userId 就能给平台上任何人发消息。
+ * 范围就限定在「参加过我这门实验的人」，比「所有被试」合理得多。
+ */
+export async function subjectHasResponse(experimentId: string, subjectId: string): Promise<boolean> {
+  const questionnaire = await repo().findByExperiment(experimentId);
+  if (!questionnaire) return false;
+  const response = await repo().findResponse(questionnaire.id, subjectId);
+  return Boolean(response);
+}
+
+/**
  * 导出答卷的取数：先确认这门实验是本人的，再取题目与全部答卷。
  * 没建问卷返回 null —— 空表和「没有问卷」是两件事，让 route 分开处理。
  */

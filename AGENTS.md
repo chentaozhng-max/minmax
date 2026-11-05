@@ -263,7 +263,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 10 条
+#### 问卷链路（v1.4）—— 改这块先读这 11 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -297,6 +297,11 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
     `declinedAt` 与 `invitedAt` 互斥：已告知的不会再收到，列表上有「已告知」小标。
     另外 `selectDeclined` 与 `selectQualified` 有处刻意不一致 —— 前者**没设分数线也认手动判定**
     （`passed=false`），因为主试完全可能逐个判而不设统一线。
+11. **主试主动发起私信要过两道闸**（`api/r/experiments/[id]/questionnaire/message`）：
+    实验必须是自己名下的（`loadOwnedExperiment`）+ 这个人必须在这门实验交过答卷
+    （`subjectHasResponse`）。**少任何一道，拿到一个 userId 就能给平台上任何人发消息。**
+    建的线程走现有私信体系，前端跳到 `/messages/[id]` —— 主试也能打开那个页面，
+    `DmChat` 已按 role 处理返回路径。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -397,7 +402,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`739 tests passed`／`✅ check-layers: 234 个文件通过（L1–L7）`／
+**验收判据是输出**：`739 tests passed`／`✅ check-layers: 235 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

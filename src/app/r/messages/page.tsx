@@ -19,8 +19,8 @@ export default async function ResearcherMessagesPage() {
       <div className="px-4 pt-3">
         {threads.length === 0 ? (
           <EmptyState
-            title="还没有被试找你"
-            description="被试在实验详情页点你的头像就能直接发消息，消息会出现在这里。"
+            title="还没有对话"
+            description="被试在实验详情页点你的头像就能直接发消息；你也可以在答卷后台点「发消息」主动找参加过实验的人。"
           />
         ) : (
           <ThreadList threads={threads} hrefBase="/messages" emptyText="还没有消息，点开打个招呼" />

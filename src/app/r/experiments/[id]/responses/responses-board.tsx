@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, ChevronDown, ChevronUp, Download, MailX, RefreshCw, Send, Sparkles } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronUp, Download, MailX, MessageCircle, RefreshCw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
@@ -27,6 +27,7 @@ type PassFilter = "ALL" | PassState;
 
 type Row = {
   id: string;
+  subjectId: string;
   name: string;
   school: string | null;
   verified: boolean;
@@ -67,6 +68,7 @@ export function ResponsesBoard({
   const [message, setMessage] = useState("");
   const [declineMessage, setDeclineMessage] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [chattingId, setChattingId] = useState<string | null>(null);
   const [busy, setBusy] = useState<"suggest" | "save" | "score" | "invite" | "decline" | null>(null);
   const [filter, setFilter] = useState<PassFilter>("ALL");
   const [showStats, setShowStats] = useState(false);
@@ -165,6 +167,21 @@ export function ResponsesBoard({
       toast(error instanceof Error ? error.message : "发送失败", "error");
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** 就这份答卷找这个人聊。只建线程不发内容 —— 顺便能看到之前的往来 */
+  async function openChat(subjectId: string) {
+    setChattingId(subjectId);
+    try {
+      const data = await postJson<{ id: string }>(
+        `/api/r/experiments/${experimentId}/questionnaire/message`,
+        { subjectId },
+      );
+      router.push(`/messages/${data.id}`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "打开会话失败", "error");
+      setChattingId(null);
     }
   }
 
@@ -438,6 +455,19 @@ export function ResponsesBoard({
                         </p>
                       </div>
                     ))}
+                  </div>
+
+                  {/* 追问用的入口：比如「你说的『偶尔』具体多久一次」 */}
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={chattingId === row.subjectId}
+                      onClick={() => openChat(row.subjectId)}
+                    >
+                      <MessageCircle size={13} className="mr-1" />
+                      发消息
+                    </Button>
                   </div>
                 </div>
               ) : null}
