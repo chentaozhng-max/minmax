@@ -28,6 +28,9 @@ function fakeQuery(rows: AssistantAppointment[]) {
       calls.push({ subjectId, from, statuses });
       return rows;
     },
+    async listMyPastExperiments() {
+      return [];
+    },
   };
   return { query, calls };
 }

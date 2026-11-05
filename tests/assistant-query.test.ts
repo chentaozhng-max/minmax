@@ -94,3 +94,57 @@ describe("makeAssistantQuery", () => {
     expect(Object.keys(select).sort()).toEqual(["experiment", "experimentId", "id", "slot", "status"]);
   });
 });
+
+/* ---------------- 做过的实验（会话的持久事实之一）---------------- */
+
+describe("makeAssistantQuery.listMyPastExperiments", () => {
+  function pastRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "a1",
+      status: "COMPLETED",
+      experimentId: "e1",
+      slot: { endAt: new Date("2026-10-01T06:30:00.000Z") },
+      experiment: { title: "面孔识别实验" },
+      ...overrides,
+    };
+  }
+
+  it("★ 时间窗进 where（slot.endAt < before），不在内存里筛", async () => {
+    const { db, calls } = makeFakeDb([]);
+    await makeAssistantQuery(db as never).listMyPastExperiments("u1", FROM, ["COMPLETED"]);
+    expect((calls[0] as { where: unknown }).where).toEqual({
+      subjectId: "u1",
+      status: { in: ["COMPLETED"] },
+      slot: { endAt: { lt: FROM } },
+    });
+  });
+
+  it("★ 按完成时间倒序（最近做的排前面）", async () => {
+    const { db, calls } = makeFakeDb([]);
+    await makeAssistantQuery(db as never).listMyPastExperiments("u1", FROM, ["COMPLETED"]);
+    expect((calls[0] as { orderBy: unknown }).orderBy).toEqual([
+      { slot: { endAt: "desc" } },
+      { id: "desc" },
+    ]);
+  });
+
+  it("空状态列表 → 不打库", async () => {
+    const { db, calls } = makeFakeDb([pastRow()]);
+    expect(await makeAssistantQuery(db as never).listMyPastExperiments("u1", FROM, [])).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("摊平成 PastExperiment（appointmentId / finishedAt 都要有）", async () => {
+    const { db } = makeFakeDb([pastRow()]);
+    const [row] = await makeAssistantQuery(db as never).listMyPastExperiments("u1", FROM, [
+      "COMPLETED",
+    ]);
+    expect(row).toEqual({
+      appointmentId: "a1",
+      experimentId: "e1",
+      experimentTitle: "面孔识别实验",
+      finishedAt: new Date("2026-10-01T06:30:00.000Z"),
+      status: "COMPLETED",
+    });
+  });
+});

@@ -10,7 +10,11 @@
  * 方向相反，所以必须是两个查询，不能硬套一个。
  */
 import { prisma } from "@/lib/prisma";
-import type { AssistantAppointment, AssistantQuery } from "@/domain/ports/assistant-query";
+import type {
+  AssistantAppointment,
+  AssistantQuery,
+  PastExperiment,
+} from "@/domain/ports/assistant-query";
 
 type RawAppointment = {
   id: string;
@@ -24,6 +28,14 @@ type RawAppointment = {
   };
 };
 
+type RawPast = {
+  id: string;
+  status: string;
+  experimentId: string;
+  slot: { endAt: Date };
+  experiment: { title: string };
+};
+
 type AppointmentFindMany = (args: unknown) => Promise<unknown[]>;
 
 export type AssistantClientLike = {
@@ -32,6 +44,37 @@ export type AssistantClientLike = {
 
 export function makeAssistantQuery(db: AssistantClientLike): AssistantQuery {
   return {
+    async listMyPastExperiments(
+      subjectId: string,
+      before: Date,
+      statuses: string[],
+    ): Promise<PastExperiment[]> {
+      if (statuses.length === 0) return [];
+
+      const rows = (await db.appointment.findMany({
+        where: {
+          subjectId,
+          status: { in: statuses },
+          slot: { endAt: { lt: before } },
+        },
+        orderBy: [{ slot: { endAt: "desc" } }, { id: "desc" }],
+        select: {
+          id: true,
+          status: true,
+          experimentId: true,
+          slot: { select: { endAt: true } },
+          experiment: { select: { title: true } },
+        },
+      })) as RawPast[];
+
+      return rows.map((row) => ({
+        appointmentId: row.id,
+        experimentId: row.experimentId,
+        experimentTitle: row.experiment.title,
+        finishedAt: row.slot.endAt,
+        status: row.status,
+      }));
+    },
     async listMyUpcomingAppointments(
       subjectId: string,
       from: Date,
