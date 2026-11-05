@@ -25,6 +25,10 @@ type ThreadMessage = {
 
 type ChatResult = {
   messages: ThreadMessage[];
+  /** 这一轮所属的会话 id。下一句要带回去，否则只能靠时间窗口猜 */
+  sessionId: string;
+  /** 正在进行的实验场数（门厅标题显示「已约 N 场」） */
+  bookedCount: number;
   degraded: boolean;
   notice: string | null;
 };
@@ -39,7 +43,7 @@ type SearchHit = {
   researcherName: string;
   matchedSlotCount: number;
   nextSlotAt: string | null;
-  matchedSlots: { startAt: string; endAt: string; remaining: number }[];
+  matchedSlots: { id: string; startAt: string; endAt: string; remaining: number }[];
 };
 
 type SearchPayload = {
@@ -82,7 +86,13 @@ export function AssistantChatView({ initial }: { initial: ChatResult }) {
   })();
 
   const send = useMutation({
-    mutationFn: (content: string) => postJson<ChatResult>("/api/assistant/chat", { content }),
+    mutationFn: (content: string) =>
+      postJson<ChatResult>("/api/assistant/chat", {
+        content,
+        // 带上服务端给的 sessionId：不带就只能靠 30 分钟时间窗猜，
+        // 用户在两个窗口/两次访问之间切换时会接错会话。
+        sessionId: view.sessionId || undefined,
+      }),
     onSuccess: (next) => {
       queryClient.setQueryData(["assistant-chat"], next);
       setDraft("");
@@ -104,7 +114,9 @@ export function AssistantChatView({ initial }: { initial: ChatResult }) {
     <main className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-paper">
       <PageHeader
         title="实验助手"
-        subtitle="我帮你找合适的实验"
+        subtitle={
+          view.bookedCount > 0 ? `已约 ${view.bookedCount} 场，还想参加什么？` : "我帮你找合适的实验"
+        }
         back="/assistant"
         profile={{ role: "SUBJECT" }}
       />
@@ -297,8 +309,8 @@ function ExperimentCard({ hit }: { hit: SearchHit }) {
           ) : (
             slots.map((s) => (
               <Link
-                key={s.startAt}
-                href={`/experiments/${hit.id}/chat`}
+                key={s.id}
+                href={`/experiments/${hit.id}/chat?from=assistant&slot=${encodeURIComponent(s.id)}`}
                 className="flex items-center justify-between border-b border-line px-3 py-2 last:border-b-0 active:bg-mist"
               >
                 <span className="num text-[13px] text-ink">
@@ -310,7 +322,7 @@ function ExperimentCard({ hit }: { hit: SearchHit }) {
             ))
           )}
           <Link
-            href={`/experiments/${hit.id}/chat`}
+            href={`/experiments/${hit.id}/chat?from=assistant`}
             className="block border-t border-line bg-moss-tint/50 px-3 py-2 text-center text-[12px] text-moss"
           >
             去这门实验选时间

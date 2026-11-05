@@ -263,3 +263,68 @@ describe("bookSlot — 问卷门槛", () => {
     expect(appt.id).toBe("appt_new");
   });
 });
+
+describe("bookSlot — 约成通知", () => {
+  it("约成 → 回调一次，带上实验标题与起止时间", async () => {
+    const seen: unknown[] = [];
+    const deps = {
+      ...makeDeps({}),
+      async notifyBooked(input: unknown) {
+        seen.push(input);
+      },
+    };
+
+    await bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      appointmentId: "appt_new",
+      experimentId: "exp_1",
+      experimentTitle: "情绪诱发实验",
+    });
+  });
+
+  it("通知在 COMMIT 之后发（不能在事务里发，否则失败会回滚预约）", async () => {
+    const deps = {
+      ...makeDeps({}),
+      async notifyBooked() {
+        deps.journal.push("notify");
+      },
+    };
+
+    await bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps);
+
+    expect(deps.journal).toEqual(["BEGIN", "tryOccupy:slot_1", "create", "COMMIT", "notify"]);
+  });
+
+  it("通知失败不影响下单：仍然返回预约", async () => {
+    const deps = {
+      ...makeDeps({}),
+      async notifyBooked() {
+        throw new Error("通知服务挂了");
+      },
+    };
+
+    const appt = await bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps);
+    expect(appt.id).toBe("appt_new");
+  });
+
+  it("占位失败 → 不发通知（没约成不该留凭据）", async () => {
+    let called = 0;
+    const deps = {
+      ...makeDeps({ occupyOk: false }),
+      async notifyBooked() {
+        called += 1;
+      },
+    };
+
+    await expect(bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps)).rejects.toThrow();
+    expect(called).toBe(0);
+  });
+
+  it("不注入回调也能正常约（老调用方零改动）", async () => {
+    const deps = makeDeps({});
+    const appt = await bookSlot({ userId: "sub_1", slotId: "slot_1", now: NOW }, deps);
+    expect(appt.id).toBe("appt_new");
+  });
+});

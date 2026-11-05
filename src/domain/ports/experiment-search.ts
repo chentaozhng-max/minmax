@@ -18,6 +18,13 @@ import type { ExperimentType } from "@/domain/constants";
 
 /** 候选实验里的一个还空着的时段（只保留未来、有余额的） */
 export type CandidateSlot = {
+  /**
+   * 时段 id。
+   *
+   * 加它是因为门厅的卡片要能「点进房间并预选这一段」—— 只靠 startAt
+   * 反查会在同一时刻有多个时段（不同实验/分组）时选错，而且要多打一次库。
+   */
+  id: string;
   startAt: Date;
   endAt: Date;
   capacity: number;

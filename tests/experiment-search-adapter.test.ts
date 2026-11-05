@@ -163,7 +163,7 @@ describe("searchCandidates — 查询形状", () => {
     expect(calls[0].select.slots).toEqual({
       where: { startAt: { gt: NOW } },
       orderBy: { startAt: "asc" },
-      select: { startAt: true, endAt: true, capacity: true, bookedCount: true },
+      select: { id: true, startAt: true, endAt: true, capacity: true, bookedCount: true },
     });
   });
 

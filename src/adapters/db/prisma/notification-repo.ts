@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import type { ReminderLevel } from "@/domain/reminder-levels";
 import type {
+  CreateBookingNoticeInput,
   CreateReminderInput,
   NotificationRecord,
   NotificationRepository,
@@ -109,6 +110,25 @@ export function makeNotificationRepository(db: NotificationClientLike): Notifica
         where: { appointmentId, level },
       });
       return count > 0;
+    },
+
+    async createBookingNotice(input: CreateBookingNoticeInput) {
+      // level 留 null：唯一约束是 `(appointmentId, level)`，而 NULL 在唯一索引里
+      // 互不相等，所以同一场实验反复约也不会互相顶掉（SQLite/Postgres 都是这语义）。
+      const created = (await db.notification.create({
+        data: {
+          userId: input.userId,
+          kind: "BOOKING_CONFIRMED",
+          level: null,
+          appointmentId: input.appointmentId,
+          experimentId: input.experimentId,
+          content: input.content,
+          channel: "IN_APP",
+          createdAt: input.createdAt,
+        },
+        select: { id: true },
+      })) as { id: string };
+      return { id: created.id };
     },
 
     async listForUser(userId: string, limit: number): Promise<NotificationRecord[]> {

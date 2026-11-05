@@ -64,7 +64,7 @@ export type ExperimentSearchHit = {
   rewardText: string;
   researcherName: string;
   /** 命中条件的空位（时间升序）；不限时间时 = 全部空位 */
-  matchedSlots: { startAt: string; endAt: string; remaining: number }[];
+  matchedSlots: { id: string; startAt: string; endAt: string; remaining: number }[];
   /** 命中时段数，用于排序和挑文案 */
   matchedSlotCount: number;
   /** 最近的空位开始时间，供文案用 */
@@ -182,6 +182,7 @@ function toHit(c: RankedCandidate): ExperimentSearchHit {
     matchedSlotCount: c.matchedSlotCount,
     nextSlotAt: c.nextSlotAt ? c.nextSlotAt.toISOString() : null,
     matchedSlots: c.matchedOpenSlots.slice(0, 8).map((s) => ({
+      id: s.id,
       startAt: s.startAt.toISOString(),
       endAt: s.endAt.toISOString(),
       remaining: Math.max(0, s.capacity - s.bookedCount),

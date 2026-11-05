@@ -38,6 +38,7 @@ function cand(over: Partial<ExperimentCandidate> = {}): ExperimentCandidate {
 function slot(iso: string, capacity = 5, bookedCount = 0) {
   const start = new Date(iso);
   return {
+    id: `slot-${iso}`,
     startAt: start,
     endAt: new Date(start.getTime() + 45 * 60 * 1000),
     capacity,

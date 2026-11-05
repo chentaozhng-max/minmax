@@ -29,6 +29,14 @@ export type CreateReminderInput = {
   createdAt: Date;
 };
 
+export type CreateBookingNoticeInput = {
+  userId: string;
+  appointmentId: string;
+  experimentId: string;
+  content: string;
+  createdAt: Date;
+};
+
 export type NotificationRecord = {
   id: string;
   kind: string;
@@ -70,6 +78,15 @@ export interface NotificationRepository {
 
   /** 未读数（站内红点） */
   countUnread(userId: string): Promise<number>;
+
+  /**
+   * 写一条「预约成功」通知。
+   *
+   * 与 `createReminder` 分开是因为幂等方式不同：提醒靠 `(appointmentId, level)`
+   * 唯一约束去重，而这条同一个人可以约很多场（多实验），没有唯一键可依靠 ——
+   * 它每次约成都该留一条，重复是正常的。
+   */
+  createBookingNotice(input: CreateBookingNoticeInput): Promise<{ id: string }>;
 
   /** 全部标记已读，返回受影响条数 */
   markAllRead(userId: string, now: Date): Promise<number>;

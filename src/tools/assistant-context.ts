@@ -24,7 +24,7 @@ export type AssistantExperimentCard = {
   researcherName: string;
   matchedSlotCount: number;
   nextSlotAt: string | null;
-  matchedSlots: { startAt: string; endAt: string; remaining: number }[];
+  matchedSlots: { id: string; startAt: string; endAt: string; remaining: number }[];
 };
 
 /** 跨实验搜索的结果摘要（工具返回值 & 页面渲染共用） */

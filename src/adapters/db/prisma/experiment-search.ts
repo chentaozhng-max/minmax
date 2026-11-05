@@ -25,6 +25,7 @@ import type {
 } from "@/domain/ports/experiment-search";
 
 type RawSlot = {
+  id: string;
   startAt: Date;
   endAt: Date;
   capacity: number;
@@ -115,7 +116,7 @@ export function makeExperimentSearch(db: SearchClientLike): ExperimentSearchPort
           slots: {
             where: { startAt: { gt: now } },
             orderBy: { startAt: "asc" },
-            select: { startAt: true, endAt: true, capacity: true, bookedCount: true },
+            select: { id: true, startAt: true, endAt: true, capacity: true, bookedCount: true },
           },
         },
       })) as RawExperiment[];
@@ -136,6 +137,7 @@ export function makeExperimentSearch(db: SearchClientLike): ExperimentSearchPort
           .filter((s) => s.bookedCount < s.capacity)
           .map(
             (s): CandidateSlot => ({
+              id: s.id,
               startAt: s.startAt,
               endAt: s.endAt,
               capacity: s.capacity,

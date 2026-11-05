@@ -69,6 +69,14 @@ export type AppealStatus = (typeof AppealStatus)[keyof typeof AppealStatus];
 export const NotificationKind = {
   /** 实验开始前的到时提醒（三档） */
   REMINDER: "REMINDER",
+  /**
+   * 预约成功当场记一笔。
+   *
+   * 为什么非要有它：约成功的反馈只有一条 toast，2 秒就没了。用户切回列表、
+   * 或者误触返回，就再也找不到「我到底约上没有」。一条通知是这件事的落点，
+   * 也是「我的消息」里能回头看的凭据。
+   */
+  BOOKING_CONFIRMED: "BOOKING_CONFIRMED",
 } as const;
 export type NotificationKind = (typeof NotificationKind)[keyof typeof NotificationKind];
 

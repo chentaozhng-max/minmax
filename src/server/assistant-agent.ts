@@ -75,6 +75,13 @@ export type AssistantChatResult = {
   messages: SessionMessage[];
   /** 这一轮所属的会话 id。前端要带着它发下一句，否则只能靠时间窗口猜 */
   sessionId: string;
+  /**
+   * 正在进行的实验场数。
+   *
+   * 门厅的标题要显示「已约 N 场」—— 这是用户在这一页唯一想确认的事：
+   * 我刚才约的那些还在不在。每轮现查（不是计数快照），所以连约三场也对。
+   */
+  bookedCount: number;
   /** true = 这轮是降级（没配 LLM 或模型炸了），页面照常可看列表 */
   degraded: boolean;
   notice: string | null;
@@ -91,9 +98,10 @@ export async function getAssistantChatView(
     ? await sessions.findOwned(sessionId, subjectId)
     : await findSession(subjectId, now);
   const stored = thread?.messages ?? [];
+  const bookedCount = await countBooked(subjectId, now);
 
   if (thread && stored.length > 0) {
-    return { messages: stored, sessionId: thread.id, degraded: false, notice: null };
+    return { messages: stored, sessionId: thread.id, bookedCount, degraded: false, notice: null };
   }
 
   // 空对话 = 首次进来。开场白不落库（否则每加一条都要判一次「这条是不是开场白」）
@@ -102,6 +110,7 @@ export async function getAssistantChatView(
       { role: "assistant", content: ASSISTANT_OPENING, createdAt: now.toISOString() },
     ],
     sessionId: thread?.id ?? "",
+    bookedCount,
     degraded: false,
     notice: null,
   };
@@ -180,7 +189,30 @@ export async function sendAssistantTurn(params: {
     await sessions.seal(thread.id);
   }
 
-  return { messages, sessionId: thread.id, degraded, notice };
+  return {
+    messages,
+    sessionId: thread.id,
+    // 只有回到门厅才会看这个数字，所以放在这里现查一次；约完一场之后
+    // 前端会重拉视图（invalidate），下一次读就是新的了。
+    bookedCount: await countBooked(params.subjectId, now),
+    degraded,
+    notice,
+  };
+}
+
+/**
+ * 已约的实验场数 —— 只算「还没结束的」。
+ *
+ * 用 upcoming 而不是全部预约：门厅标题写「已约 N 场」，用户理解的是
+ * 「我接下来要去的」，把上周做完的和取消的都算进去会让他以为约了一堆。
+ */
+async function countBooked(subjectId: string, now: Date): Promise<number> {
+  const upcoming = await assistantQuery.listMyUpcomingAppointments(
+    subjectId,
+    now,
+    ACTIVE_APPOINTMENT_STATUSES,
+  );
+  return upcoming.length;
 }
 
 /* ---------------- 内部 ---------------- */

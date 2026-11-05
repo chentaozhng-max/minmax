@@ -49,6 +49,9 @@ function makeRepo(candidates: ReminderCandidate[]) {
     async listForUser() {
       return [] as NotificationRecord[];
     },
+    async createBookingNotice() {
+      return { id: "n-booking" };
+    },
     async countUnread() {
       return 0;
     },

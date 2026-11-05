@@ -44,6 +44,21 @@ export type BookDeps = {
    * 名额一旦被占，主试的筛选就白做了。
    */
   questionnairePass?(experimentId: string, subjectId: string): Promise<boolean>;
+  /**
+   * 约成之后记一条站内通知。
+   *
+   * 可选且**失败不影响下单** —— 预约本身已经落库了，通知只是「能回头看」的
+   * 冗余凭据；为了它把一次成功的报名回滚掉不划算。传回调而不是让用例 import
+   * 通知仓储，是为了让这层不知道通知存在哪（和 questionnairePass 同一个手法）。
+   */
+  notifyBooked?(input: {
+    userId: string;
+    appointmentId: string;
+    experimentId: string;
+    experimentTitle: string;
+    startAt: Date;
+    endAt: Date;
+  }): Promise<void>;
 };
 
 /**
@@ -72,7 +87,7 @@ export async function bookSlot(input: BookInput, deps: BookDeps) {
   const rejection = assertBookable({ experiment: slot.experiment, slot, subject, conflicts, existing, now });
   if (rejection) throw new ApiError(rejection.status, rejection.message);
 
-  return deps.uow.runInTransaction(async (tx: RepositoryBundle) => {
+  const appointment = await deps.uow.runInTransaction(async (tx: RepositoryBundle) => {
     const ok = await tx.slots.tryOccupy(slot.id);
     if (!ok) throw new ApiError(409, SLOT_FULL_MESSAGE);
 
@@ -88,6 +103,26 @@ export async function bookSlot(input: BookInput, deps: BookDeps) {
       createdAt: now,
     });
   });
+
+  // 事务已提交，这里再补通知。放在事务内一旦通知写失败会连预约一起回滚 ——
+  // 为了一条「能回头看」的冗余凭据丢掉一次成功的报名，不划算。
+  if (deps.notifyBooked) {
+    try {
+      await deps.notifyBooked({
+        userId: input.userId,
+        appointmentId: appointment.id,
+        experimentId: slot.experiment.id,
+        experimentTitle: slot.experiment.title,
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+      });
+    } catch (error) {
+      // 只吞不报：通知写失败不该让用户看到「预约失败」，实际已经约上了
+      console.error("[book-slot] notify failed", error);
+    }
+  }
+
+  return appointment;
 }
 
 /** 只是为了让 SlotRepository / AppointmentRepository 的类型被本文件引用到（避免未使用告警） */

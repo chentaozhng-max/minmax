@@ -12,6 +12,10 @@ import { penalizeTx, rewardAttendanceTx } from "@/server/credit";
 import { bookSlot as bookSlotUseCase, type BookInput } from "@/application/book-slot";
 import { makeBundle, makeUnitOfWork } from "@/adapters/db/prisma/unit-of-work";
 import { hasPassedQuestionnaire } from "@/server/questionnaire-service";
+import { makeNotificationRepository } from "@/adapters/db/prisma/notification-repo";
+import { formatDateTimeCN } from "@/lib/time";
+
+const notifications = makeNotificationRepository(prisma as never);
 
 /**
  * 报名 / 锁定时段。
@@ -37,6 +41,17 @@ export async function bookSlot(input: BookInput) {
       return user;
     },
     questionnairePass: hasPassedQuestionnaire,
+    async notifyBooked(input) {
+      await notifications.createBookingNotice({
+        userId: input.userId,
+        appointmentId: input.appointmentId,
+        experimentId: input.experimentId,
+        createdAt: new Date(),
+        content: `已约上「${input.experimentTitle}」${formatDateTimeCN(input.startAt)}–${formatDateTimeCN(
+          input.endAt,
+        )}，等待主试确认。`,
+      });
+    },
   });
 }
 

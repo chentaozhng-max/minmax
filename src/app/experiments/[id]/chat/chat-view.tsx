@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUp, CalendarPlus, Check, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -30,6 +31,14 @@ type ToolResult =
   | { ok?: boolean; slots?: SlotView[]; reason?: string; error?: string; label?: string }
   | undefined;
 
+/** 约成之后留在页面上的一张小票 */
+type BookedInfo = {
+  label: string;
+  title: string;
+  researcherName: string;
+  location: string;
+};
+
 export function ChatView({
   experimentId,
   initial,
@@ -40,9 +49,22 @@ export function ChatView({
   experiment: ExperimentBrief;
 }) {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * 从门厅点时段进来时带 `?from=assistant&slot=<id>`：
+   *   - from  决定返回键回哪（回门厅还是回实验详情）
+   *   - slot  预选那一段，但**不自动提交**
+   *
+   * 为什么不自动提交：门厅里点的是「我想约这个时间」，不是「替我下单」。
+   * 少一次确认，用户就少一次反悔机会，而且约错了他未必知道怎么撤。
+   */
+  const fromAssistant = searchParams.get("from") === "assistant";
+  const preselectSlotId = searchParams.get("slot");
+  const backHref = fromAssistant ? "/assistant/chat" : `/experiments/${experimentId}`;
 
   const { data } = useQuery({
     queryKey: ["chat", experimentId],
@@ -53,6 +75,27 @@ export function ChatView({
 
   const view = data ?? initial;
   const messages = view.messages;
+
+  /**
+   * 刚约成的这一单。
+   *
+   * 状态而不是 toast：toast 2 秒就没了，用户返回或误触就再也找不到「约上没有」。
+   * 这张卡片会一直留在页面底部，直到他离开页面（顺带写了一条站内通知兜底）。
+   */
+  const [booked, setBooked] = useState<BookedInfo | null>(null);
+
+  /**
+   * 从门厅带来的时段做预选。只在首次进来时生效，而且只认「确实还空着」的段 ——
+   * 那段可能已经被别人约走了，写进 picked 会让用户点确认时吃一个 409。
+   */
+  useEffect(() => {
+    if (!preselectSlotId) return;
+    const exists = view.availableSlots.some((s) => s.id === preselectSlotId);
+    if (exists) setPicked([preselectSlotId]);
+    // 故意不把 view.availableSlots 放进依赖：它每轮轮询都是新数组，
+    // 会让预选在用户手动取消后又被塞回来。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectSlotId]);
 
   const send = useMutation({
     mutationFn: (content: string) => postJson<ChatViewData>(`/api/chat/${experimentId}/message`, { content }),
@@ -65,8 +108,8 @@ export function ChatView({
 
   const book = useMutation({
     mutationFn: (slotId: string) => postJson<{ id: string }>("/api/appointments", { slotId }),
-    onSuccess: async () => {
-      toast("已锁定，等待主试确认");
+    onSuccess: async (_r, slotId) => {
+      setBooked(makeBookedInfo(slotId, view.availableSlots, experiment));
       await queryClient.invalidateQueries({ queryKey: ["chat", experimentId] });
       await queryClient.invalidateQueries({ queryKey: ["appointments"] });
     },
@@ -85,9 +128,10 @@ export function ChatView({
       }
       throw lastError ?? new Error("预约失败");
     },
-    onSuccess: async () => {
+    onSuccess: async (_r, slotIds) => {
+      const first = slotIds[0];
       setPicked([]);
-      toast("已锁定，等待主试确认");
+      if (first) setBooked(makeBookedInfo(first, view.availableSlots, experiment));
       await queryClient.invalidateQueries({ queryKey: ["chat", experimentId] });
       await queryClient.invalidateQueries({ queryKey: ["appointments"] });
     },
@@ -112,9 +156,9 @@ export function ChatView({
   return (
     <main className="mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col bg-paper">
       <PageHeader
-        title="选时段"
-        subtitle={`${experiment.researcherName} · ${experiment.title}`}
-        back={`/experiments/${experimentId}`}
+        title={experiment.title}
+        subtitle={`${experiment.researcherName} · ${experiment.durationMin} 分钟 · ${experiment.location}`}
+        back={backHref}
         profile={{ role: "SUBJECT" }}
         right={
           <Link href="/appointments" className="px-2 text-[12px] text-moss">
@@ -205,6 +249,8 @@ export function ChatView({
           </div>
         ) : null}
 
+        {booked ? <BookedCard info={booked} fromAssistant={fromAssistant} /> : null}
+
         <div ref={bottomRef} className="h-2" />
       </div>
 
@@ -212,7 +258,7 @@ export function ChatView({
         <div className="border-t border-line bg-surface px-4 py-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
           {canSwitchExperiment(blocked.reason) ? (
             // 这门实验的门槛而已，换一门可能就过了 —— 给个出口，别把人堵死在这
-            <Link href="/" className="block">
+            <Link href={fromAssistant ? "/assistant/chat" : "/"} className="block">
               <Button size="lg" block>
                 去约别的实验
               </Button>
@@ -270,6 +316,67 @@ function isLastProposal(messages: ChatMessageView[], index: number) {
     if (messages[i].toolCalls?.some((c) => c.name === "propose_slots")) return false;
   }
   return true;
+}
+
+/**
+ * 约成的凭据卡片。
+ *
+ * 替换掉原来的 toast（`toast("已锁定，等待主试确认")`）—— toast 只活在当下，
+ * 用户返回/刷新/切页就再也找不到「我到底约上没有」。这张卡片会一直挂到
+ * 他离开页面，并且顺手在服务端写了一条站内通知（`BOOKING_CONFIRMED`），
+ * 关掉页面之后也还能在「消息」里翻到。
+ */
+function BookedCard({ info, fromAssistant }: { info: BookedInfo; fromAssistant: boolean }) {
+  return (
+    <div className="mb-3 ml-9 overflow-hidden rounded-card border border-moss/30 bg-moss-tint">
+      <div className="flex items-start gap-2 px-3 py-2.5">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-moss text-white">
+          <Check size={13} strokeWidth={3} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-moss">已锁定，等待主试确认</p>
+          <p className="mt-0.5 truncate text-[12px] text-ink">{info.title}</p>
+          <p className="num mt-0.5 text-[11px] text-ink-soft">
+            {info.label} · {info.location}
+          </p>
+          <p className="mt-1 text-[11px] text-ink-soft">确认后「我的预约」里会出现签到入口。</p>
+        </div>
+      </div>
+      <div className="flex border-t border-moss/20">
+        <Link
+          href={fromAssistant ? "/assistant/chat" : "/"}
+          className="flex-1 border-r border-moss/20 py-2 text-center text-[12px] text-moss active:bg-moss/10"
+        >
+          {fromAssistant ? "再找一个实验" : "看看别的实验"}
+        </Link>
+        <Link
+          href="/appointments"
+          className="flex-1 py-2 text-center text-[12px] text-moss active:bg-moss/10"
+        >
+          看我的预约
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 从时段列表里拼出「几点到几点」。
+ *
+ * 拿不到就退化成空 label —— 宁可少显示一行，也不要编一个时间出来。
+ */
+function makeBookedInfo(
+  slotId: string,
+  slots: SlotView[],
+  experiment: ExperimentBrief,
+): BookedInfo {
+  const slot = slots.find((s) => s.id === slotId);
+  return {
+    label: slot?.label ?? "",
+    title: experiment.title,
+    researcherName: experiment.researcherName,
+    location: experiment.location,
+  };
 }
 
 function MessageBlock({
