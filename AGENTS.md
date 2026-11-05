@@ -188,6 +188,7 @@ prisma/
 | `search-criteria.ts` | 助手搜索的条件归一（「周三下午」→ 时间窗）+ 排序 |
 | `assistant-brief.ts` | 助手总览的撞车判定 |
 | `questionnaire.ts` | 问卷规则：归一化 / 发布体检 / 规则版拆题 / 答案校验 / `passState` `selectQualified` |
+| `question-stats.ts` | 每题分布：频次 + 比例（分母是回答人数，多选题可超 100%） |
 | `ports/` | **端口定义：接口只能写在这里**（清单见第 4.2 节） |
 
 ### src/application/ — 应用层（编排，不写业务判断）
@@ -322,7 +323,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    56 个 Vitest 文件 / 648 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    60 个 Vitest 文件 / 723 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -389,7 +390,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`648 tests passed`／`✅ check-layers: 228 个文件通过（L1–L7）`／
+**验收判据是输出**：`723 tests passed`／`✅ check-layers: 232 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

@@ -57,6 +57,15 @@ export default async function ResponsesPage({
           passScore: questionnaire.passScore,
         }}
         summary={summary}
+        questions={questionnaire.questions.map((q) => ({
+          id: q.id,
+          order: q.order,
+          title: q.title,
+          type: q.type,
+          options: q.options,
+          scaleMin: q.scaleMin,
+          scaleMax: q.scaleMax,
+        }))}
         responses={responses.map((r) => ({
           id: r.id,
           name: r.subjectName,
@@ -66,10 +75,11 @@ export default async function ResponsesPage({
           score: r.score,
           reason: r.scoreReason,
           passed: r.passed,
+          passState: r.passState,
           status: r.status,
           submittedAt: r.submittedAt.toISOString(),
           invitedAt: r.invitedAt ? r.invitedAt.toISOString() : null,
-          answers: r.answerRows,
+          answers: r.answers,
         }))}
       />
     </main>

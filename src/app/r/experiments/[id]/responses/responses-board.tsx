@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Download, RefreshCw, Send, Sparkles } from "lucide-react";
+import { BarChart3, ChevronDown, ChevronUp, Download, RefreshCw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
+import { formatAnswer, type AnswerMap } from "@/domain/questionnaire";
+import { summarizeAnswers, type QuestionStat, type StatQuestion } from "@/domain/question-stats";
 
 type Summary = {
   total: number;
@@ -19,6 +21,10 @@ type Summary = {
   average: number | null;
 };
 
+/** 和 QuestionStat 的三态对齐：通过 / 未通过 / 待定（未算分或没设分数线） */
+type PassState = "PASS" | "FAIL" | "UNKNOWN";
+type PassFilter = "ALL" | PassState;
+
 type Row = {
   id: string;
   name: string;
@@ -28,10 +34,11 @@ type Row = {
   score: number | null;
   reason: string | null;
   passed: boolean | null;
+  passState: PassState;
   status: string;
   submittedAt: string;
   invitedAt: string | null;
-  answers: { title: string; answer: string }[];
+  answers: AnswerMap;
 };
 
 export function ResponsesBoard({
@@ -40,6 +47,7 @@ export function ResponsesBoard({
   mode,
   questionnaire,
   summary,
+  questions,
   responses,
 }: {
   experimentId: string;
@@ -47,6 +55,7 @@ export function ResponsesBoard({
   mode: "ONLINE" | "OFFLINE";
   questionnaire: { title: string; status: string; passScore: number | null };
   summary: Summary;
+  questions: StatQuestion[];
   responses: Row[];
 }) {
   const router = useRouter();
@@ -57,11 +66,16 @@ export function ResponsesBoard({
   const [message, setMessage] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState<"suggest" | "save" | "score" | "invite" | null>(null);
+  const [filter, setFilter] = useState<PassFilter>("ALL");
+  const [showStats, setShowStats] = useState(false);
 
   const threshold = passScore.trim() === "" ? null : Number(passScore);
   const qualified = responses.filter(
     (r) => r.passed === true || (r.passed === null && r.score !== null && threshold !== null && r.score >= threshold),
   );
+
+  const visible = filter === "ALL" ? responses : responses.filter((r) => r.passState === filter);
+  const stats = showStats ? summarizeAnswers(questions, responses) : [];
 
   async function suggest() {
     if (!goal.trim()) return toast("先说一句你的筛选要求", "error");
@@ -244,9 +258,51 @@ export function ResponsesBoard({
       </div>
 
       <div className="mt-4 space-y-2">
-        <h2 className="text-[14px] font-medium text-ink">
-          答卷 <span className="num text-ink-soft">{responses.length}</span>
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-[14px] font-medium text-ink">
+            答卷 <span className="num text-ink-soft">{responses.length}</span>
+          </h2>
+          {responses.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowStats((v) => !v)}
+              className="rounded-pill border border-line px-2.5 py-1 text-[11px] text-moss active:bg-mist"
+            >
+              <BarChart3 size={11} className="mr-1 inline align-[-1px]" />
+              {showStats ? "收起分布" : "看题目分布"}
+            </button>
+          ) : null}
+        </div>
+
+        {/* 三个筛选项与上面的统计口径一一对应，数字能对上 */}
+        {responses.length > 0 ? (
+          <div className="flex gap-1.5">
+            {(
+              [
+                { key: "ALL", label: "全部", count: summary.total },
+                { key: "PASS", label: "通过", count: summary.passed },
+                { key: "FAIL", label: "未通过", count: summary.failed },
+                { key: "UNKNOWN", label: "待定", count: summary.unknown },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setFilter(item.key)}
+                className={cn(
+                  "press flex-1 rounded-pill py-1.5 text-[12px]",
+                  filter === item.key
+                    ? "bg-moss text-white"
+                    : "border border-line bg-surface text-ink-soft",
+                )}
+              >
+                {item.label} <span className="num">{item.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {showStats ? <QuestionStatsPanel stats={stats} total={summary.total} /> : null}
 
         {responses.length === 0 ? (
           <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-[12px] text-ink-soft">
@@ -254,7 +310,13 @@ export function ResponsesBoard({
           </p>
         ) : null}
 
-        {responses.map((row) => {
+        {responses.length > 0 && visible.length === 0 ? (
+          <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-[12px] text-ink-soft">
+            这一类里没有答卷。
+          </p>
+        ) : null}
+
+        {visible.map((row) => {
           const open = expanded === row.id;
           const isQualified =
             row.passed === true ||
@@ -304,13 +366,15 @@ export function ResponsesBoard({
                     </p>
                   ) : null}
                   <div className="space-y-2">
-                    {row.answers.map((a, i) => (
-                      <div key={i}>
+                    {questions.map((q, i) => (
+                      <div key={q.id}>
                         <p className="text-[11px] text-ink-soft">
                           <span className="num mr-1">{i + 1}.</span>
-                          {a.title}
+                          {q.title}
                         </p>
-                        <p className="mt-0.5 text-[12px] leading-5 text-ink">{a.answer}</p>
+                        <p className="mt-0.5 text-[12px] leading-5 text-ink">
+                          {formatAnswer(q, row.answers[q.id])}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -325,5 +389,72 @@ export function ResponsesBoard({
         「{experimentTitle}」的答卷只对你自己可见。
       </p>
     </section>
+  );
+}
+
+/**
+ * 题目分布。
+ *
+ * 分母是「回答了这题的人数」，不是答卷总数 —— 选做题没填的人不该拉低比例，
+ * 所以每题单独标「N 人作答」。多选题的百分比加起来会超过 100%，这是多选的
+ * 正常现象，不做归一。
+ */
+function QuestionStatsPanel({ stats, total }: { stats: QuestionStat[]; total: number }) {
+  if (stats.length === 0) return null;
+
+  return (
+    <div className="rounded-card border border-line bg-surface p-3.5">
+      <p className="text-[11px] leading-5 text-ink-soft">
+        共 {total} 份答卷。每题的比例以「回答了这题的人」为分母，多选题会加起来超过 100%。
+      </p>
+
+      <div className="mt-3 space-y-4">
+        {stats.map((stat, index) => (
+          <div key={stat.questionId}>
+            <p className="text-[12px] leading-5 text-ink">
+              <span className="num mr-1 text-ink-soft">{index + 1}.</span>
+              {stat.title}
+            </p>
+            <p className="num mt-0.5 text-[10px] text-ink-soft">
+              {stat.answered} 人作答
+              {stat.answered < total ? `（${total - stat.answered} 人跳过）` : ""}
+            </p>
+
+            {stat.texts.length > 0 ? (
+              <ul className="mt-1.5 space-y-1">
+                {stat.texts.map((text, i) => (
+                  <li
+                    key={i}
+                    className="rounded-[6px] bg-mist/50 px-2 py-1.5 text-[11px] leading-5 text-ink"
+                  >
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="mt-1.5 space-y-1">
+                {stat.tallies.map((tally) => (
+                  <div key={tally.label} className="flex items-center gap-2">
+                    {/* 不截断：选项文案本身就是结果的一部分，「每周 3 次及…」等于没读 */}
+                    <span className="w-[96px] shrink-0 text-[11px] leading-[14px] text-ink-soft">
+                      {tally.label}
+                    </span>
+                    <span className="h-2 flex-1 overflow-hidden rounded-full bg-mist">
+                      <span
+                        className="block h-full rounded-full bg-moss"
+                        style={{ width: `${Math.round(tally.ratio * 100)}%` }}
+                      />
+                    </span>
+                    <span className="num w-[38px] shrink-0 text-right text-[11px] text-ink">
+                      {tally.count > 0 ? `${Math.round(tally.ratio * 100)}%` : "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

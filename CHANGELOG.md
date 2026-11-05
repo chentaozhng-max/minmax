@@ -84,11 +84,16 @@
    - 只给学号不给手机号 —— 问卷对被试承诺匿名，学号是为了学分登记（和日程表导出口径一致）。
    - 未作答写「（未作答）」而不是留空，避免在统计里变成缺失值。
    - `csvCell` / `csvDateTime` / BOM / CRLF 抽到 `application/csv-format.ts`，和日程表导出共用一套，不重复实现 RFC 4180。
+8. **答卷后台能筛、能看分布**：
+   - 列表上方四个 chip「全部 / 通过 / 未通过 / 待定」，数字与统计四宫格同一口径（不多不少，能对上）。
+   - 旁边的「看题目分布」展开后是每题频次：单选/多选**按原选项顺序**、量表按分值升序，0 票的也留着（显示「—」而不是消失，否则看不出这个选项存在）。
+   - 每题标「N 人作答（M 人跳过）」，比例以**回答人数**为分母；多选题加起来会超过 100%，这是正常的，不做归一。文本题直接列出全部回答。
+   - 落点：`domain/question-stats.ts`（纯函数，无 IO）+ `tests/question-stats.test.ts` 9 例。
 
 ### 验证（本次实测）
 
-- `npm test` → **56 文件 / 648 用例**（新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
-- `npm run lint:layers` → 228 文件通过
+- `npm test` → **60 文件 / 723 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm run lint:layers` → 232 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
 - 真浏览器复查（headless Edge，390×844）：线上实验的首页卡片、被试详情、主试详情、主试列表、答卷后台五处均无「时段 / 地点 / 报名 / 未到场」等线下措辞；导出接口返回 200 + BOM + 正确中文文件名
@@ -96,10 +101,10 @@
 ### 已知未做
 
 - 分数线只能整份问卷一条，不支持按题设权重
-- 答卷后台没有每题分布统计（单选/多选/量表的频次），也没有按「通过 / 未通过 / 未算分」筛选
 - 扫描件 PDF 不做 OCR（提示主试换文件或直接粘题目）
 - 邀请只发站内私信，不发邮件/短信
 - 线上实验没有「已结算」状态；未通过筛选的人不会收到任何通知
+- 分布只做描述统计，不做差异检验（t 检验 / 方差分析留给 SPSS）
 
 ---
 
