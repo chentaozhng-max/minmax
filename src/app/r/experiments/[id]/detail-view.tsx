@@ -227,23 +227,32 @@ export function ResearcherExperimentDetail({
             {data.openAnytime ? "随时可填" : `截止 ${data.signupDeadline.slice(0, 10)}`}
           </p>
           {online ? (
-            // 线上实验的数字不是「订了几场」，而是「收了多少份、过了几个」
+            // 线上实验的数字不是「订了几场」，而是「收了多少份、过了几个」。
+            // 整块可点直接进答卷页 —— 看到数字的下一步就是要看是谁。
             <>
-              <div className="mt-2 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
-                <Stat label="答卷" value={data.responseTotal} />
-                <Stat
-                  label="已通过"
-                  value={data.responsePassed}
-                  tone={data.responsePassed > 0 ? "clay" : "ink"}
-                />
-                <Stat
-                  label="待算分"
-                  value={Math.max(0, data.responseTotal - data.responseScored)}
-                  tone={data.responseTotal > data.responseScored ? "clay" : "ink"}
-                />
-              </div>
-              <p className="mt-1.5 text-[11px] leading-5 text-ink-soft">
-                被试提交问卷即算完成，不占时段。
+              <Link
+                href={`/r/experiments/${experimentId}/responses`}
+                className="mt-2 block rounded-[8px] bg-mist/60 py-2 text-center active:bg-mist"
+              >
+                <div className="grid grid-cols-3 divide-x divide-line">
+                  <Stat label="答卷" value={data.responseTotal} />
+                  <Stat
+                    label="已通过"
+                    value={data.responsePassed}
+                    tone={data.responsePassed > 0 ? "clay" : "ink"}
+                  />
+                  <Stat
+                    label="待算分"
+                    value={Math.max(0, data.responseTotal - data.responseScored)}
+                    tone={data.responseTotal > data.responseScored ? "clay" : "ink"}
+                  />
+                </div>
+              </Link>
+              <p className="mt-1.5 flex items-center justify-between gap-2 text-[11px] leading-5 text-ink-soft">
+                <span>被试提交问卷即算完成，不占时段。</span>
+                <Link href={`/r/experiments/${experimentId}/responses`} className="shrink-0 text-moss">
+                  查看答卷 →
+                </Link>
               </p>
             </>
           ) : (
@@ -256,20 +265,37 @@ export function ResearcherExperimentDetail({
         </div>
 
         {data.needsQuestionnaire ? (
-          <Link
-            href={`/r/experiments/${experimentId}/questionnaire`}
-            className="mt-3 block rounded-card border border-moss/25 bg-moss-tint/40 px-3.5 py-3"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[13px] font-medium text-ink">问卷与答卷</span>
-              <span className="text-[11px] text-moss">管理 →</span>
+          // 线上：上面的统计块已经能点进答卷页了，这里只留编辑入口，避免两个「查看答卷」。
+          // 线下：统计块是「待处理/已订/总容量」，不能点，所以答卷入口还得在这放一份。
+          online ? (
+            <Link
+              href={`/r/experiments/${experimentId}/questionnaire`}
+              className="mt-3 block rounded-card border border-moss/25 bg-moss-tint/40 px-3.5 py-2.5 text-[12px] text-moss active:bg-moss-tint/60"
+            >
+              编辑问卷题目 →
+            </Link>
+          ) : (
+            <div className="mt-3 overflow-hidden rounded-card border border-moss/25 bg-moss-tint/40">
+              <Link
+                href={`/r/experiments/${experimentId}/responses`}
+                className="block px-3.5 py-3 active:bg-moss-tint/60"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-medium text-ink">答卷</span>
+                  <span className="text-[11px] text-moss">查看 →</span>
+                </div>
+                <p className="mt-1 text-[11px] leading-5 text-ink-soft">
+                  看报名者提交的问卷、按分数筛选、发预约邀请
+                </p>
+              </Link>
+              <Link
+                href={`/r/experiments/${experimentId}/questionnaire`}
+                className="block border-t border-moss/15 px-3.5 py-2 text-[12px] text-moss active:bg-moss-tint/60"
+              >
+                编辑问卷题目 →
+              </Link>
             </div>
-            <p className="mt-1 text-[11px] leading-5 text-ink-soft">
-              {online
-                ? "看答卷、按分数筛选、给达标者发站内消息"
-                : "上传材料生成题目、按分数筛选、给达标者发预约邀请"}
-            </p>
-          </Link>
+          )
         ) : null}
 
         {/* 线上实验没有报名和时段，这两个 tab 里永远是空的，整块不渲染 */}
