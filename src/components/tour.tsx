@@ -42,11 +42,34 @@ export function Tour({
 }) {
   const [index, setIndex] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
+  /**
+   * 实际可走的步骤。
+   *
+   * 有些步骤的目标是条件渲染的（比如「告知未通过」那块，没人未通过时不存在）。
+   * 如果只在导航时才发现找不到、再往后跳，序号会停在「4 / 5」然后突然关闭，
+   * 用户会以为漏了一步。所以打开时先筛一遍，序号从一开始就是对的。
+   */
+  const [usable, setUsable] = useState<TourStep[]>(steps);
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const [bubbleHeight, setBubbleHeight] = useState(0);
 
-  const step = steps[index];
-  const last = index === steps.length - 1;
+  const step = usable[index];
+  const last = index === usable.length - 1;
+
+  useEffect(() => {
+    if (!open) return;
+    // 等目标渲染出来再筛（有的步骤依赖异步数据）
+    const timer = window.setTimeout(() => {
+      const found = steps.filter((s) => document.querySelector(s.target));
+      if (found.length === 0) {
+        onDone();
+        return;
+      }
+      setUsable(found);
+      setIndex(0);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [open, steps, onDone]);
 
   /** 找目标、算位置。找不到就往后跳一步（页面结构变了不该把教程卡死） */
   const measure = useCallback(() => {
@@ -54,7 +77,7 @@ export function Tour({
     const el = document.querySelector(step.target);
     if (!el) {
       // 这一屏没有这个元素，直接跳到下一步；已经在最后一步就结束
-      if (index < steps.length - 1) setIndex((i) => i + 1);
+      if (index < usable.length - 1) setIndex((i) => i + 1);
       else onDone();
       return;
     }
@@ -65,7 +88,7 @@ export function Tour({
       width: rect.width + PAD * 2,
       height: rect.height + PAD * 2,
     });
-  }, [open, step, index, steps.length, onDone]);
+  }, [open, step, index, usable.length, onDone]);
 
   // 换步时把目标滚到视野中间，否则高亮框可能在屏幕外
   useEffect(() => {
@@ -103,12 +126,12 @@ export function Tour({
       if (e.key === "Escape") onDone();
       if (e.key === "Enter") {
         if (last) onDone();
-        else setIndex((i) => Math.min(steps.length - 1, i + 1));
+        else setIndex((i) => Math.min(usable.length - 1, i + 1));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, last, steps.length, onDone]);
+  }, [open, last, usable.length, onDone]);
 
   if (!open || !step) return null;
   if (!box) {
@@ -171,7 +194,7 @@ export function Tour({
 
         <div className="mt-3 flex items-center justify-between">
           <span className="num text-[11px] text-ink-soft">
-            {index + 1} / {steps.length}
+            {index + 1} / {usable.length}
           </span>
           <div className="flex items-center gap-2">
             {index > 0 ? (
@@ -189,7 +212,7 @@ export function Tour({
             )}
             <Button
               size="sm"
-              onClick={() => (last ? onDone() : setIndex((i) => Math.min(steps.length - 1, i + 1)))}
+              onClick={() => (last ? onDone() : setIndex((i) => Math.min(usable.length - 1, i + 1)))}
               className={cn(last && "px-4")}
             >
               {last ? "知道了" : "下一步"}

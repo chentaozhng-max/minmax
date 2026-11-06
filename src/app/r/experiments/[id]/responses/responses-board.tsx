@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BarChart3, ChevronDown, ChevronUp, Download, MailX, MessageCircle, RefreshCw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tour, type TourStep } from "@/components/tour";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
@@ -24,6 +25,42 @@ type Summary = {
 /** 和 QuestionStat 的三态对齐：通过 / 未通过 / 待定（未算分或没设分数线） */
 type PassState = "PASS" | "FAIL" | "UNKNOWN";
 type PassFilter = "ALL" | PassState;
+
+/**
+ * 答卷后台的新手引导。
+ *
+ * 这个页面按钮最多，第一次进来最容易找不到东西。按视觉动线从上往下讲五步；
+ * 最后一步（告知未通过）没人未通过时那块根本不存在，Tour 会自动跳过。
+ */
+const TOUR_KEY = "psymatch:tour:responses:v1";
+
+const TOUR_STEPS: TourStep[] = [
+  {
+    target: '[data-tour="export"]',
+    title: "先说说导出",
+    body: "点这里下一份 Excel 表：一行一人、一列一题，直接拖进 SPSS。连续多天的实验还多一列「第几次」，同一个人会占好几行。",
+  },
+  {
+    target: '[data-tour="summary"]',
+    title: "整体情况",
+    body: "答卷数、均分这些。连续多天的实验下面还会多一块「完成情况」——多少人参与、几个真填满了、每天掉多少人。",
+  },
+  {
+    target: '[data-tour="filters"]',
+    title: "按结果筛",
+    body: "只看通过的、只看待定的。数字和上面的统计一一对应，不会对不上。",
+  },
+  {
+    target: '[data-tour="invite"]',
+    title: "通知达标的人",
+    body: "点一下，过线的人会收到站内消息。同一个人只发一次，反复点也不会重复打扰。",
+  },
+  {
+    target: '[data-tour="decline"]',
+    title: "也别忘了没通过的人",
+    body: "他们同样会收到一句说明。文案刻意不带分数、不说「未通过」，只讲这一轮条件不太匹配。",
+  },
+];
 
 type Row = {
   id: string;
@@ -82,6 +119,8 @@ export function ResponsesBoard({
   const [declineMessage, setDeclineMessage] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [chattingId, setChattingId] = useState<string | null>(null);
+  /** 新手引导：只在有答卷时弹一次 */
+  const [tourOpen, setTourOpen] = useState(false);
   const [busy, setBusy] = useState<"suggest" | "save" | "score" | "invite" | "decline" | null>(null);
   const [filter, setFilter] = useState<PassFilter>("ALL");
   const [showStats, setShowStats] = useState(false);
@@ -198,6 +237,19 @@ export function ResponsesBoard({
     }
   }
 
+  // 空的后台讲这些没意义：先有答卷再说
+  useEffect(() => {
+    if (summary.total === 0) return;
+    if (localStorage.getItem(TOUR_KEY)) return;
+    const timer = window.setTimeout(() => setTourOpen(true), 500);
+    return () => window.clearTimeout(timer);
+  }, [summary.total]);
+
+  function closeTour() {
+    setTourOpen(false);
+    localStorage.setItem(TOUR_KEY, "1");
+  }
+
   return (
     <section className="px-4 pb-10 pt-3">
       <div className="rounded-card border border-line bg-surface p-4">
@@ -212,6 +264,7 @@ export function ResponsesBoard({
           {/* 没有答卷时不显示：空表导下去只会让人以为坏了 */}
           {summary.total > 0 ? (
             <a
+              data-tour="export"
               href={`/api/r/experiments/${experimentId}/questionnaire/export`}
               className="shrink-0 rounded-pill border border-line px-2.5 py-1 text-[11px] text-moss active:bg-mist"
             >
@@ -221,7 +274,7 @@ export function ResponsesBoard({
           ) : null}
         </div>
 
-        <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+        <div className="mt-3 grid grid-cols-4 gap-2 text-center" data-tour="summary">
           {[
             // 长程实验里「6 份」和「3 人」是两回事，标签上把单位写清楚，
             // 免得主试拿四宫格的人数去和下面的完成情况对不上
@@ -331,7 +384,7 @@ export function ResponsesBoard({
         </p>
       </div>
 
-      <div className="mt-3 rounded-card border border-line bg-surface p-4">
+      <div className="mt-3 rounded-card border border-line bg-surface p-4" data-tour="invite">
         <p className="text-[13px] font-medium text-ink">
           {mode === "ONLINE" ? "给达标者发消息" : "邀请达标者预约"}
         </p>
@@ -365,7 +418,7 @@ export function ResponsesBoard({
 
       {/* 伦理上被筛掉的人也该被告知。没人未通过时整块不出现，别占地方 */}
       {summary.failed > 0 ? (
-        <div className="mt-3 rounded-card border border-line bg-surface p-4">
+        <div className="mt-3 rounded-card border border-line bg-surface p-4" data-tour="decline">
           <p className="text-[13px] font-medium text-ink">告知本轮不合适的人</p>
           <p className="mt-1 text-[11px] leading-5 text-ink-soft">
             给没通过筛选的人发一句说明。默认文案不带分数、也不用「未通过」这类词，
@@ -415,7 +468,7 @@ export function ResponsesBoard({
 
         {/* 三个筛选项与上面的统计口径一一对应，数字能对上 */}
         {responses.length > 0 ? (
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5" data-tour="filters">
             {(
               [
                 { key: "ALL", label: "全部", count: summary.total },
@@ -578,6 +631,8 @@ export function ResponsesBoard({
       <p className="mt-4 text-center text-[11px] leading-5 text-ink-soft">
         「{experimentTitle}」的答卷只对你自己可见。
       </p>
+
+      <Tour steps={TOUR_STEPS} open={tourOpen} onDone={closeTour} />
     </section>
   );
 }
@@ -645,6 +700,7 @@ function QuestionStatsPanel({ stats, total }: { stats: QuestionStat[]; total: nu
           </div>
         ))}
       </div>
+
     </div>
   );
 }
