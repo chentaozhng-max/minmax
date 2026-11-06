@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   CalendarCheck,
   ChevronRight,
+  Compass,
   FlaskConical,
   MessageCircle,
   Plus,
@@ -140,6 +141,13 @@ export default async function ResearcherProfilePage() {
             label="申诉处理"
             meta={appeals > 0 ? `${appeals} 条待处理` : undefined}
             highlight={appeals > 0}
+          />
+          {/* 教程只自动弹一次，之后靠这个入口重看 */}
+          <Row
+            href="/r/experiments?tour=1"
+            icon={<Compass size={17} strokeWidth={1.8} />}
+            label="新手引导"
+            meta="重看一遍"
           />
         </div>
 

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
 import { Modal, PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
+import { Tour, type TourStep } from "@/components/tour";
 import { EmptyState } from "@/components/experiment-card";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/badge";
@@ -40,16 +42,48 @@ const FILTERS = [
   { key: "CLOSED", label: "已关闭" },
 ];
 
+/** 新手引导：只覆盖「看一眼就知道怎么用」的四个点，多了没人看完 */
+const TOUR_KEY = "psymatch:tour:researcher:v1";
+
+const TOUR_STEPS: TourStep[] = [
+  {
+    target: '[data-tour="publish"]',
+    title: "从这里发布实验",
+    body: "填标题、奖励和能来的时间，三步发出去。第三步也可以直接写一句话，让助手把表单填好。",
+  },
+  {
+    target: '[data-tour="list"]',
+    title: "发布过的实验都在这里",
+    body: "卡片上的状态就是实验现在走到哪一步：草稿还没上架、招募中才会出现在被试的列表里。点卡片进去能编辑、看报名、管问卷。",
+  },
+  {
+    target: '[data-tour="filters"]',
+    title: "按状态筛一下",
+    body: "实验多了以后，这里能只看草稿或只看招募中的。",
+  },
+  {
+    target: '[data-tour="tabbar"]',
+    title: "底部是四个主要入口",
+    body: "被试会从「消息」里找你，报酬和信誉在「我的」。随时可以从「我的」里重看这个引导。",
+  },
+];
+
 export function ResearcherExperiments({
   bannedUntil,
   bannedDays,
   initialFilter,
+  tourRequested,
 }: {
   bannedUntil: string | null;
   bannedDays: number;
   /** 从「我的」页的统计数字点进来时带的筛选，非法值一律回到「全部」 */
   initialFilter?: string;
+  /** 从「我的」点「新手引导」进来：强制打开一次 */
+  tourRequested?: boolean;
 }) {
+  const router = useRouter();
+  const [tourOpen, setTourOpen] = useState(false);
+
   const [filter, setFilter] = useState(
     FILTERS.some((f) => f.key === initialFilter) ? (initialFilter as string) : "ALL",
   );
@@ -65,6 +99,27 @@ export function ResearcherExperiments({
 
   const rows = (data ?? []).filter((r) => filter === "ALL" || r.status === filter);
 
+  /**
+   * 首次进来自动弹一次；从「我的」点「新手引导」进来则每次都弹。
+   * 等 isLoading 结束再弹，否则高亮框会落在一个骨架屏上。
+   */
+  useEffect(() => {
+    if (isLoading) return;
+    if (tourRequested) {
+      setTourOpen(true);
+      return;
+    }
+    if (localStorage.getItem(TOUR_KEY)) return;
+    setTourOpen(true);
+  }, [isLoading, tourRequested]);
+
+  function closeTour() {
+    setTourOpen(false);
+    localStorage.setItem(TOUR_KEY, "1");
+    // 去掉 ?tour=1：刷新时不该再弹一次
+    if (tourRequested) router.replace("/r/experiments");
+  }
+
   return (
     <main className="shell tabbar-space">
       <PageHeader
@@ -77,11 +132,11 @@ export function ResearcherExperiments({
               日程
             </Link>
             {banned ? (
-              <Button size="sm" variant="outline" onClick={() => setBanOpen(true)}>
+              <Button size="sm" variant="outline" data-tour="publish" onClick={() => setBanOpen(true)}>
                 发布
               </Button>
             ) : (
-              <Link href="/r/experiments/new">
+              <Link href="/r/experiments/new" data-tour="publish">
                 <Button size="sm">发布</Button>
               </Link>
             )}
@@ -102,7 +157,10 @@ export function ResearcherExperiments({
         </div>
       ) : null}
 
-      <div className="scroll-x sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">
+      <div
+        data-tour="filters"
+        className="scroll-x sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-3 py-2 backdrop-blur"
+      >
         {FILTERS.map((f) => (
           <button
             key={f.key}
@@ -118,7 +176,7 @@ export function ResearcherExperiments({
         ))}
       </div>
 
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-3" data-tour="list">
         {isLoading ? (
           <div className="space-y-2">
             <div className="skeleton h-24" />
@@ -224,6 +282,8 @@ export function ResearcherExperiments({
           </Link>
         </div>
       </Modal>
+
+      <Tour steps={TOUR_STEPS} open={tourOpen} onDone={closeTour} />
 
       <TabBar role="RESEARCHER" />
     </main>

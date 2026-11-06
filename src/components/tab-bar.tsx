@@ -89,7 +89,10 @@ export function TabBar({ role }: { role: "SUBJECT" | "RESEARCHER" }) {
   }, [pendingHref]);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface/95 backdrop-blur">
+    <nav
+      data-tour="tabbar"
+      className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface/95 backdrop-blur"
+    >
       <div className="safe-bottom mx-auto flex h-14 w-full max-w-[480px] items-stretch">
         {tabs.map((tab) => {
           const active =

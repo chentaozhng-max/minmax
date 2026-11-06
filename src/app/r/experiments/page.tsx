@@ -6,13 +6,13 @@ import { ResearcherExperiments } from "./researcher-experiments";
 export default async function ResearcherExperimentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; tour?: string }>;
 }) {
   await requirePage("RESEARCHER");
   const user = await currentUser();
   const now = new Date();
   // 「我的」页上的「招募中 8」点进来时带着 ?filter=PUBLISHED，落地就是筛好的
-  const { filter } = await searchParams;
+  const { filter, tour } = await searchParams;
 
   // 禁期在服务端算好：列表页的「发布」因此能在跳转前弹出警告，
   // 剩余天数也不会因为服务端/客户端时间差造成水合不一致
@@ -24,6 +24,7 @@ export default async function ResearcherExperimentsPage({
       bannedUntil={activeBan?.toISOString() ?? null}
       bannedDays={activeBan ? banDaysLeft(activeBan, now) : 0}
       initialFilter={filter}
+      tourRequested={tour === "1"}
     />
   );
 }

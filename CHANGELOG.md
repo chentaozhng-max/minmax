@@ -133,11 +133,17 @@
     第 1 天 3 人、第 2 天 2 人、第 3 天 1 人，流失一眼看得出来。
     - 同时把四宫格的标签改成「答卷（份）」「达标（份）」，免得主试拿份数去和人数对不上。
     - 落点：`domain/question-stats.ts` 的 `summarizeRepeats` + `tests/repeat-stats.test.ts` 6 例。
+17. **主试端新手引导**：第一次进「我的实验」自动弹一次，四个点（发布 / 实验列表 / 状态筛选 / 底部导航），
+    点「下一步」一路走过去，走完写 localStorage 不再弹。
+    - 之后可以从「我的 → 新手引导」重看。
+    - 自己写（`components/tour.tsx`，130 行）而没引 driver.js：它的灰蓝样式跟砚青不搭，
+      而且我们只要「高亮 + 气泡 + 上一步/下一步」这点东西。遮罩用 `box-shadow: 0 0 0 9999px` 造，不用 SVG 挖洞。
+    - 目标元素找不到时自动跳下一步（页面结构变了不该把教程卡死）；下方空间不够时气泡自动翻到上方。
 
 ### 验证（本次实测）
 
 - `npm test` → **66 文件 / 786 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/repeat-stats.test.ts` 6 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
-- `npm run lint:layers` → 236 文件通过
+- `npm run lint:layers` → 237 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
 - 真浏览器复查（headless Edge，390×844）：线上实验的首页卡片、被试详情、主试详情、主试列表、答卷后台五处均无「时段 / 地点 / 报名 / 未到场」等线下措辞；导出接口返回 200 + BOM + 正确中文文件名
