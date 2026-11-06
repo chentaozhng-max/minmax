@@ -19,6 +19,10 @@ export type AssistantExperimentCard = {
   id: string;
   title: string;
   location: string;
+  /** 线上 / 线下：线上实验没有「时段」，卡片的说法完全不同 */
+  mode: "ONLINE" | "OFFLINE";
+  /** ANYTIME / WINDOW 点进去就能做；SCHEDULED 要挑场次 */
+  scheduleMode: "ANYTIME" | "WINDOW" | "SCHEDULED";
   durationMin: number;
   rewardText: string;
   researcherName: string;

@@ -60,6 +60,10 @@ export type ExperimentSearchHit = {
   id: string;
   title: string;
   location: string;
+  /** 线上 / 线下；线上没有「时段」这回事，展示与话术都要分开 */
+  mode: "ONLINE" | "OFFLINE";
+  /** 线上实验的时间形态：ANYTIME / WINDOW 点进去就能做，SCHEDULED 要挑场次 */
+  scheduleMode: "ANYTIME" | "WINDOW" | "SCHEDULED";
   durationMin: number;
   rewardText: string;
   researcherName: string;
@@ -176,6 +180,8 @@ function toHit(c: RankedCandidate): ExperimentSearchHit {
     id: c.id,
     title: c.title,
     location: c.location,
+    mode: c.mode,
+    scheduleMode: c.scheduleMode,
     durationMin: c.durationMin,
     rewardText: c.rewardText,
     researcherName: c.researcherName,

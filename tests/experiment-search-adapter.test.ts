@@ -99,12 +99,18 @@ describe("searchCandidates — 查询形状", () => {
 
     expect(calls[0].where.AND).toEqual([
       {
-        slots: {
-          some: {
-            startAt: { gt: NOW },
-            OR: [{ startAt: { gte: w.start, lt: w.end } }],
+        OR: [
+          // 线上实验先放行：它们没有「到场时间」，用 slots 卡会把它们全灭
+          { mode: "ONLINE" },
+          {
+            slots: {
+              some: {
+                startAt: { gt: NOW },
+                OR: [{ startAt: { gte: w.start, lt: w.end } }],
+              },
+            },
           },
-        },
+        ],
       },
     ]);
   });
@@ -123,7 +129,8 @@ describe("searchCandidates — 查询形状", () => {
     const and = calls[0].where.AND as any[];
     expect(and).toHaveLength(2);
     expect(and[0].OR[0].title.contains).toBe("决策");
-    expect(and[1].slots.some.OR).toHaveLength(1);
+    expect(and[1].OR[0]).toEqual({ mode: "ONLINE" });
+    expect(and[1].OR[1].slots.some.OR).toHaveLength(1);
     expect(calls[0].where.durationMin).toEqual({ lte: 60 });
     // 顶层 OR 不该出现：一旦有，说明走回了互相覆盖的老写法
     expect(calls[0].where.OR).toBeUndefined();
@@ -144,8 +151,8 @@ describe("searchCandidates — 查询形状", () => {
       NOW,
     );
 
-    const some = (calls[0].where.AND as any[])[0].slots.some;
-    expect(some.OR).toHaveLength(2);
+    const or = (calls[0].where.AND as any[])[0].OR;
+    expect(or[1].slots.some.OR).toHaveLength(2);
   });
 
   it("取数有上限（不整表拉）", async () => {

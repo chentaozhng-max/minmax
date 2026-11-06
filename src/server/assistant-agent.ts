@@ -380,6 +380,8 @@ function makeAssistantContext(
           id: h.id,
           title: h.title,
           location: h.location,
+          mode: h.mode,
+          scheduleMode: h.scheduleMode,
           durationMin: h.durationMin,
           rewardText: h.rewardText,
           researcherName: h.researcherName,
@@ -539,5 +541,11 @@ const SYSTEM_PROMPT = [
   "2. 被资格挡掉的实验要提到（excluded），让用户知道不是系统里没有，而是他暂时报不了。",
   "3. 语气简洁口语化，每条不超过 3 行。不要用列表符号，不要复述原始数据，不要报 id。",
   "4. 全程用中文。",
+  "",
+  "## 线上实验没有「时段」这回事",
+  "返回里 mode 是 ONLINE、且 scheduleMode 不是 SCHEDULED 的实验，是「随时能填」的线上问卷，",
+  "matchedSlots 为空是正常的、不是没排期。说「随时可以填」「点进去就能做」，",
+  "绝对不要说「还没出可约时段」「暂时没有空位」「等主试排期」——那会把用户劝退。",
+  "只有 mode 是 OFFLINE，或 scheduleMode 是 SCHEDULED 的实验，才按时段来讲。",
 ].join("\n");
 

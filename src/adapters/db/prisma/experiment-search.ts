@@ -36,6 +36,8 @@ type RawExperiment = {
   id: string;
   title: string;
   location: string;
+  mode: string;
+  scheduleMode: string;
   durationMin: number;
   rewardText: string;
   type: string;
@@ -85,13 +87,20 @@ export function makeExperimentSearch(db: SearchClientLike): ExperimentSearchPort
       }
       const windows = query.windows;
       if (windows.length > 0) {
+        // 线上实验不能被时间窗筛掉：它们没有「到场时间」这个概念，
+        // 用 slots 去卡会让「周三下午有空」把所有线上实验全灭掉。
         and.push({
-          slots: {
-            some: {
-              startAt: { gt: now },
-              OR: windows.map((w) => ({ startAt: { gte: w.start, lt: w.end } })),
+          OR: [
+            { mode: "ONLINE" },
+            {
+              slots: {
+                some: {
+                  startAt: { gt: now },
+                  OR: windows.map((w) => ({ startAt: { gte: w.start, lt: w.end } })),
+                },
+              },
             },
-          },
+          ],
         });
       }
       if (and.length > 0) where.AND = and;
@@ -104,6 +113,8 @@ export function makeExperimentSearch(db: SearchClientLike): ExperimentSearchPort
           id: true,
           title: true,
           location: true,
+          mode: true,
+          scheduleMode: true,
           durationMin: true,
           rewardText: true,
           type: true,
@@ -125,6 +136,11 @@ export function makeExperimentSearch(db: SearchClientLike): ExperimentSearchPort
         id: row.id,
         title: row.title,
         location: row.location,
+        mode: row.mode === "ONLINE" ? "ONLINE" : "OFFLINE",
+        scheduleMode:
+          row.scheduleMode === "WINDOW" || row.scheduleMode === "SCHEDULED"
+            ? row.scheduleMode
+            : "ANYTIME",
         durationMin: row.durationMin,
         rewardText: row.rewardText,
         type: row.type as ExperimentCandidate["type"],

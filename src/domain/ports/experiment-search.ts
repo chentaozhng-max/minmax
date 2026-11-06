@@ -36,6 +36,18 @@ export type ExperimentCandidate = {
   id: string;
   title: string;
   location: string;
+  /**
+   * 线上 / 线下。
+   *
+   * 线上实验**没有「到场时间」这回事**：ANYTIME 随时可填、WINDOW 按天算。
+   * 少了这个字段，上层会把「0 个时段」当成「还没出排期」讲给用户听（踩过）。
+   */
+  mode: "ONLINE" | "OFFLINE";
+  /**
+   * 线上实验的时间形态。`SCHEDULED` 也有场次可挑，只有 ANYTIME / WINDOW 才是
+   * 「点进去就能做」—— 上层靠它决定是列时段还是写「随时可填」。
+   */
+  scheduleMode: "ANYTIME" | "WINDOW" | "SCHEDULED";
   durationMin: number;
   rewardText: string;
   type: ExperimentType;

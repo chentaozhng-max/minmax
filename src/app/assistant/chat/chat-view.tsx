@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, AlertTriangle, CalendarClock, ChevronDown, ChevronRight, MapPin, Sparkles, Timer } from "lucide-react";
+import { ArrowUp, AlertTriangle, CalendarClock, ChevronDown, ChevronRight, MapPin, Monitor, Sparkles, Timer } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -40,6 +40,8 @@ type SearchHit = {
   id: string;
   title: string;
   location: string;
+  mode: "ONLINE" | "OFFLINE";
+  scheduleMode: "ANYTIME" | "WINDOW" | "SCHEDULED";
   durationMin: number;
   rewardText: string;
   researcherName: string;
@@ -315,6 +317,69 @@ function SearchResultBlock({ payload }: { payload: SearchPayload }) {
 function ExperimentCard({ hit }: { hit: SearchHit }) {
   const [open, setOpen] = useState(false);
   const slots = hit.matchedSlots.slice(0, 6);
+  /**
+   * 线上且不是固定场次 → 没有「时段」这个概念，点进去就能做。
+   *
+   * 以前这里一律写「N 个时段」，线上实验永远是「0 个时段」，
+   * 看起来像主试还没排期，被试根本不会点（用户就是这么被劝退的）。
+   */
+  const anytime = hit.mode === "ONLINE" && hit.scheduleMode !== "SCHEDULED";
+
+  const head = (
+    <div className="flex items-start justify-between gap-2">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-medium text-ink">{hit.title}</span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-ink-soft">
+          <span className="inline-flex items-center gap-0.5">
+            <Timer size={11} strokeWidth={2} />
+            {hit.durationMin} 分钟
+          </span>
+          {anytime ? (
+            <span className="inline-flex items-center gap-0.5">
+              <Monitor size={11} strokeWidth={2} />
+              线上
+            </span>
+          ) : (
+            <span className="inline-flex min-w-0 items-center gap-0.5">
+              <MapPin size={11} strokeWidth={2} />
+              <span className="truncate">{hit.location}</span>
+            </span>
+          )}
+        </span>
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-1">
+        <RewardTag text={hit.rewardText} />
+        <span className="inline-flex items-center gap-0.5 text-[11px] text-moss">
+          {anytime
+            ? hit.scheduleMode === "WINDOW"
+              ? "每天可填"
+              : "随时可填"
+            : open
+              ? "收起"
+              : `${hit.matchedSlotCount || slots.length} 个时段`}
+          {anytime ? null : (
+            <ChevronDown
+              size={12}
+              strokeWidth={2.4}
+              className={open ? "rotate-180 transition-transform" : "transition-transform"}
+            />
+          )}
+        </span>
+      </span>
+    </div>
+  );
+
+  // 线上「点进去就能做」：一票直达详情页，不再让人先展开一个空列表
+  if (anytime) {
+    return (
+      <Link
+        href={`/experiments/${hit.id}`}
+        className="block rounded-card border border-line bg-surface px-3 py-2.5 active:bg-mist"
+      >
+        {head}
+      </Link>
+    );
+  }
 
   return (
     <div className="overflow-hidden rounded-card border border-line bg-surface">
@@ -323,32 +388,7 @@ function ExperimentCard({ hit }: { hit: SearchHit }) {
         onClick={() => setOpen((v) => !v)}
         className="w-full px-3 py-2.5 text-left active:bg-mist"
       >
-        <div className="flex items-start justify-between gap-2">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[14px] font-medium text-ink">{hit.title}</span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-ink-soft">
-              <span className="inline-flex items-center gap-0.5">
-                <Timer size={11} strokeWidth={2} />
-                {hit.durationMin} 分钟
-              </span>
-              <span className="inline-flex min-w-0 items-center gap-0.5">
-                <MapPin size={11} strokeWidth={2} />
-                <span className="truncate">{hit.location}</span>
-              </span>
-            </span>
-          </span>
-          <span className="flex shrink-0 flex-col items-end gap-1">
-            <RewardTag text={hit.rewardText} />
-            <span className="inline-flex items-center gap-0.5 text-[11px] text-moss">
-              {open ? "收起" : `${hit.matchedSlotCount || slots.length} 个时段`}
-              <ChevronDown
-                size={12}
-                strokeWidth={2.4}
-                className={open ? "rotate-180 transition-transform" : "transition-transform"}
-              />
-            </span>
-          </span>
-        </div>
+        {head}
       </button>
 
       {open ? (

@@ -104,6 +104,8 @@ describe("search_experiments 执行", () => {
               id: "a",
               title: "决策实验",
               location: "302",
+              mode: "OFFLINE",
+              scheduleMode: "SCHEDULED",
               durationMin: 45,
               rewardText: "40 元",
               researcherName: "张",

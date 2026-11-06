@@ -512,7 +512,26 @@ powershell -NoProfile -Command "Select-String -Path .next\static\chunks\*.js -Pa
 4. `npm run lint:layers` → `node scripts/check-layers.mjs --baseline` 把基线调小
 5. `npm test && npm run accept` 全绿再 commit
 
-### 7.6 加一步新手引导
+### 7.6 「整卡可点」的正确写法
+
+`experiment-card.tsx` 用的是「绝对定位的 Link 铺满 + 内容层穿透」：
+
+```tsx
+<div className="relative">
+  <Link className="absolute inset-0" />
+  <span className="pointer-events-none absolute ..." />   {/* 色条之类 */}
+  <div className="pointer-events-none relative ...">      {/* 内容层 */}
+    ...
+    <Link className="pointer-events-auto relative z-10" /> {/* 卡内真正的按钮 */}
+  </div>
+</div>
+```
+
+**内容层不加 `pointer-events-none` 就点不动**：`position: relative` 的兄弟节点
+按绘制顺序盖在绝对定位的 Link 之上，点击全被它吃掉，表现是「整卡没反应」，
+只有最外圈内边距能点。这个 bug 静默、不报错，只能靠真点一次发现。
+
+### 7.7 加一步新手引导
 
 三处已在用（`components/tour.tsx`）：`/r/experiments` 列表、发布页分步、答卷后台。
 

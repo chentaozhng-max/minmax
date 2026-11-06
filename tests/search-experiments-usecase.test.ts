@@ -22,6 +22,8 @@ function cand(over: Partial<ExperimentCandidate> = {}): ExperimentCandidate {
     id: "exp_1",
     title: "决策实验",
     location: "心理学楼 302",
+    mode: "OFFLINE",
+    scheduleMode: "SCHEDULED",
     durationMin: 45,
     rewardText: "40 元",
     type: "INDIVIDUAL",
