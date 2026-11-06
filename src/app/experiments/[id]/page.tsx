@@ -116,9 +116,13 @@ export default async function ExperimentDetailPage({
                       : "通过后主试会给你发消息，届时就能预约",
                 }
               : experiment.mode === "ONLINE"
-                ? qState.invited
-                  ? { label: "已入选", disabled: true, reason: "主试会通过消息和你安排后续" }
-                  : { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
+                ? // 线上固定场次：通过筛选后该让他去选场次。
+                  // 返回 null 会让「立即预约」露出来 —— 用「已入选」会把唯一的报名入口挡掉
+                  qState.scheduleMode === "SCHEDULED"
+                  ? null
+                  : qState.invited
+                    ? { label: "已入选", disabled: true, reason: "主试会通过消息和你安排后续" }
+                    : { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
                 : null
     : null;
 

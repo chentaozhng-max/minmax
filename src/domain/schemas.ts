@@ -6,6 +6,7 @@
  * 两者的变更频率与责任人不同（改文案 vs 改类型）。
  */
 import { z } from "zod";
+import { MAX_SLOT_CAPACITY } from "@/domain/experiment-draft";
 
 export const loginSchema = z.object({
   phone: z.string().regex(/^1\d{10}$/, "请输入 11 位手机号"),
@@ -32,7 +33,7 @@ export const confirmVerifySchema = z.object({
 export const slotInputSchema = z.object({
   startAt: z.string(),
   endAt: z.string(),
-  capacity: z.number().int().min(1).max(50),
+  capacity: z.number().int().min(1).max(MAX_SLOT_CAPACITY),
 });
 
 export const createExperimentSchema = z

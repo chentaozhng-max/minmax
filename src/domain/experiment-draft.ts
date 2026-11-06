@@ -46,6 +46,14 @@ const LOCATION_PLACEHOLDER_RE = /待(补充|确认|定)|TBD|TODO|XXX/i;
  * 导出是因为表单要用它做当场提示：不能让主试填到第 3 步才发现
  * 地点还是助手留下的「待补充」。
  */
+/**
+ * 一个场次的人数上限。
+ *
+ * 线下 50 人已经是很夸张的一间实验室；线上固定场次常常「不限名额」
+ * （大班讲座、集体施测），所以放到 999 —— 实际上等于不限。
+ */
+export const MAX_SLOT_CAPACITY = 999;
+
 export function isPlaceholderLocation(location: string): boolean {
   return LOCATION_PLACEHOLDER_RE.test(location.trim());
 }
@@ -181,7 +189,7 @@ export function planSlots(
   );
   // 与批量生成同一规则：段长向上取整到半小时，格子永远落在整点/半点
   const step = Math.max(30, Math.ceil(duration / 30) * 30);
-  const capacity = Math.max(1, Math.min(50, Math.round(opts.capacity)));
+  const capacity = Math.max(1, Math.min(MAX_SLOT_CAPACITY, Math.round(opts.capacity)));
   const maxSlots = opts.maxSlots ?? DRAFT_LIMITS.maxSlots;
 
   const weekdays = new Set(
@@ -279,7 +287,7 @@ function asSlot(v: unknown): DraftSlot | null {
   return {
     startAt: start.toISOString(),
     endAt: end.toISOString(),
-    capacity: asInt(v.capacity, 1, 1, 50),
+    capacity: asInt(v.capacity, 1, 1, MAX_SLOT_CAPACITY),
   };
 }
 
