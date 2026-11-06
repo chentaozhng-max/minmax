@@ -512,6 +512,25 @@ powershell -NoProfile -Command "Select-String -Path .next\static\chunks\*.js -Pa
 4. `npm run lint:layers` → `node scripts/check-layers.mjs --baseline` 把基线调小
 5. `npm test && npm run accept` 全绿再 commit
 
+### 7.6 加一步新手引导
+
+三处已在用（`components/tour.tsx`）：`/r/experiments` 列表、发布页分步、答卷后台。
+
+1. 给目标元素加锚点：`data-tour="xxx"`（`<Field>` 支持透传这个属性）
+2. 在页面里定义 `TourStep[]`，`<Tour steps={...} open={...} onDone={...} />`
+3. 用 localStorage 记标记（`psymatch:tour:<页面>:v1`）；**发布页是按 step 分开记的**，
+   走到哪一步讲哪一步，不要串成一条跨页教程
+
+四条踩过的坑：
+
+- **目标元素不存在会被静默跳过**（这是有意的：条件渲染的块不该把教程卡死）。
+  所以选择器写错也不会报错，只是那一步不出现 —— 加完步骤要在真浏览器上数一遍。
+- **高亮框会被裁到视口内，并且最高不超过半屏**。目标是整个列表容器那种超高元素时，
+  照搬 `rect` 会让框跑出屏幕、气泡被顶到外面只剩半截。
+- **描边必须写进 inline `boxShadow`**：`ring-*` 用的是同一个属性，会被整条覆盖掉。
+  而且得是「2px 白 + 2px 砚青」两圈 —— 目标本身就可能是砚青色（发布按钮）。
+- **打开时先筛步骤**（`usable`），不要边翻边跳。否则走到「4 / 5」突然关掉，用户以为漏了一步。
+
 ## 8. 部署与发布
 
 ### 8.1 换 PostgreSQL

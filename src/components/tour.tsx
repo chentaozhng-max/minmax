@@ -30,6 +30,8 @@ type Box = { top: number; left: number; width: number; height: number };
 const PAD = 6;
 const GAP = 10;
 const BUBBLE_MAX = 320;
+/** 高亮框离视口边缘的最小距离 */
+const EDGE = 12;
 
 export function Tour({
   steps,
@@ -82,12 +84,26 @@ export function Tour({
       return;
     }
     const rect = el.getBoundingClientRect();
-    setBox({
-      top: rect.top - PAD,
-      left: rect.left - PAD,
-      width: rect.width + PAD * 2,
-      height: rect.height + PAD * 2,
-    });
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    /**
+     * 目标可能比视口还高 —— 第 2 步高亮的是整个实验列表容器，
+     * 而列表比一屏长。照搬 rect 会同时出两个问题：
+     *   1. top 是负数、高度超过视口，外围那圈 box-shadow 把整屏都照亮，
+     *      看起来像根本没铺遮罩；
+     *   2. 气泡按 `viewportH - box.top` 算出来是个极大的值，直接被顶到屏幕外，
+     *      只剩下半截，标题被裁掉（这就是那个 bug）。
+     * 所以裁到视口内，并把高度限制在一半左右，给气泡留出位置。
+     */
+    const top = Math.max(rect.top - PAD, EDGE);
+    const left = Math.max(rect.left - PAD, EDGE);
+    const right = Math.min(rect.right + PAD, vw - EDGE);
+    // 底部也要裁：TabBar 那种贴着视口底的元素，加上内边距会溢出几像素
+    const bottom = Math.min(rect.bottom + PAD, vh - EDGE);
+    const height = Math.max(24, Math.min(bottom - top, Math.round(vh * 0.5)));
+
+    setBox({ top, left, width: Math.max(right - left, 24), height });
   }, [open, step, index, usable.length, onDone]);
 
   // 换步时把目标滚到视野中间，否则高亮框可能在屏幕外
@@ -143,24 +159,46 @@ export function Tour({
   const viewportH = typeof window === "undefined" ? 844 : window.innerHeight;
   const bubbleW = Math.min(BUBBLE_MAX, viewportW - 32);
 
-  // 下方放不下就翻到上方
+  // 下方放不下就翻到上方；上下都放不下就贴底（目标几乎占满屏时会走到这里）
   const spaceBelow = viewportH - (box.top + box.height);
-  const wantBottom = step.placement ? step.placement === "bottom" : spaceBelow > bubbleHeight + GAP + 24;
-  const putBelow = wantBottom || bubbleHeight === 0;
+  const spaceAbove = box.top;
+  const fitsBelow = spaceBelow >= bubbleHeight + GAP + 16;
+  const fitsAbove = spaceAbove >= bubbleHeight + GAP + 16;
+
+  const placement: "top" | "bottom" | "fallback" =
+    bubbleHeight === 0
+      ? // 还没量出高度，先按下方的位置放，量完会修正
+        "bottom"
+      : step.placement === "top" && fitsAbove
+        ? "top"
+        : fitsBelow
+          ? "bottom"
+          : fitsAbove
+            ? "top"
+            : "fallback";
 
   const left = Math.min(Math.max(16, box.left + box.width / 2 - bubbleW / 2), viewportW - bubbleW - 16);
 
   return (
     <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label={step.title}>
-      {/* 高亮框本身就是遮罩：巨大的外阴影把周围压暗 */}
+      {/* 高亮框本身就是遮罩：巨大的外阴影把周围压暗。
+          描边不能用 Tailwind 的 ring —— ring 也是靠 box-shadow 实现的，
+          会被这里 inline 的 boxShadow 整条覆盖掉，所以合并写在一起。 */}
       <div
-        className="pointer-events-none absolute rounded-[10px] ring-2 ring-moss transition-all duration-200"
+        data-tour-spotlight
+        className="pointer-events-none absolute rounded-[10px] transition-all duration-200"
         style={{
           top: box.top,
           left: box.left,
           width: box.width,
           height: box.height,
-          boxShadow: "0 0 0 9999px rgba(20,30,26,0.55)",
+          /**
+           * 三圈：2px 白 → 2px 砚青 → 无穷大的暗色。
+           * 白的那圈是必要的 —— 目标本身可能就是砚青色（比如「发布」按钮），
+           * 只有绿圈的话会和按钮融成一片，看不出边界。
+           */
+          boxShadow:
+            "0 0 0 2px #fff, 0 0 0 4px var(--moss), 0 0 0 9999px rgba(20,30,26,0.55)",
         }}
       />
 
@@ -169,13 +207,17 @@ export function Tour({
 
       <div
         ref={bubbleRef}
+        data-tour-bubble
         className="absolute rounded-[12px] border border-line bg-surface p-3.5 shadow-lg"
         style={{
           width: bubbleW,
           left,
-          ...(putBelow
+          ...(placement === "bottom"
             ? { top: box.top + box.height + GAP }
-            : { bottom: viewportH - box.top + GAP }),
+            : placement === "top"
+              ? { bottom: viewportH - box.top + GAP }
+              : // 兜底：贴视口底部，至少保证整块气泡看得见
+                { bottom: 16 }),
         }}
       >
         <div className="flex items-start justify-between gap-2">

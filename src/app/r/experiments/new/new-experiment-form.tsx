@@ -51,11 +51,6 @@ const PUBLISH_TOUR: Record<number, TourStep[]> = {
       body: "线下要排时段、被试到实验室来；线上是填完问卷就结束。这个选择会决定后面两步长什么样。",
     },
     {
-      target: '[data-tour="reward"]',
-      title: "奖励写多少",
-      body: "被试实际拿到的钱。线上一般 20–50 元，按任务时长给；太低了没人报，太高了预算吃不住。",
-    },
-    {
       target: '[data-tour="credit"]',
       title: "信誉门槛",
       body: "低于这个分数的被试报不了名。默认 0 就是谁都能报；被放过鸽子的话可以调高。",
@@ -518,7 +513,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                   onChange={(e) => setDurationMin(e.target.value.replace(/\D/g, ""))}
                 />
               </Field>
-              <Field label="奖励金额（元）" data-tour="reward">
+              <Field label="奖励金额（元）">
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[15px] text-ink-soft">
                     ¥
