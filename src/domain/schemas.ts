@@ -112,6 +112,13 @@ export const chatMessageSchema = z.object({
  */
 export const assistantChatMessageSchema = chatMessageSchema.extend({
   sessionId: z.string().min(1).optional(),
+  /**
+   * 用户主动「开新对话」。
+   *
+   * 必须显式传，不能靠「不带 sessionId」表达 —— 不带时服务端会退化成
+   * 「取 30 分钟内最近活跃的那条」，用户的清空动作被悄悄撤销。
+   */
+  newSession: z.boolean().optional(),
 });
 
 /**

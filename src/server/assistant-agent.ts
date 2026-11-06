@@ -38,8 +38,9 @@ import type { AssistantContext, AssistantSearchPayload } from "@/tools/assistant
 import { getLlm, type LlmMessage } from "@/adapters/llm";
 import { createScopeClassifier } from "@/adapters/llm/scope-classifier";
 import { checkScope } from "@/application/scope-gate";
-import { getStrike, setStrike } from "@/application/scope-strike-store";
-import { createGuardState, deniedResult, guardToolCall, noteToolCall } from "@/tools/guard";
+import type { StrikeLevel } from "@/domain/scope-guard";
+import { strikeLevel } from "@/domain/scope-guard";
+import { getStrike, setStrike } from "@/application/scope-strike-store";import { createGuardState, deniedResult, guardToolCall, noteToolCall } from "@/tools/guard";
 
 const sessions = makeSessionStore(prisma as never);
 const experimentSearch = makeExperimentSearch(prisma as never);
@@ -89,6 +90,18 @@ export type AssistantChatResult = {
   /** true = 这轮是降级（没配 LLM 或模型炸了），页面照常可看列表 */
   degraded: boolean;
   notice: string | null;
+  /**
+   * 这一轮被范围闸拦下来了（没进主模型）。
+   *
+   * 前端需要它才能区分「助手正常回了句话」和「助手拒答了」——
+   * 只看 messages 看不出区别，因为拒答也是一条 assistant 消息。
+   */
+  blocked: boolean;
+  /**
+   * 拦截强度。`repeat` = 本次会话里已经是第二次（或更多次）越界，
+   * 这时候前端才值得给「开个新对话」的出口；`first` 只给软话术，不打扰。
+   */
+  strikeLevel: StrikeLevel;
 };
 
 /* ---------------- 读出当前视图 ---------------- */
@@ -105,7 +118,15 @@ export async function getAssistantChatView(
   const bookedCount = await countBooked(subjectId, now);
 
   if (thread && stored.length > 0) {
-    return { messages: stored, sessionId: thread.id, bookedCount, degraded: false, notice: null };
+    return {
+      messages: stored,
+      sessionId: thread.id,
+      bookedCount,
+      degraded: false,
+      notice: null,
+      blocked: false,
+      strikeLevel: strikeLevel(getStrike(thread.id)),
+    };
   }
 
   // 空对话 = 首次进来。开场白不落库（否则每加一条都要判一次「这条是不是开场白」）
@@ -117,6 +138,8 @@ export async function getAssistantChatView(
     bookedCount,
     degraded: false,
     notice: null,
+    blocked: false,
+    strikeLevel: thread ? strikeLevel(getStrike(thread.id)) : "first",
   };
 }
 
@@ -126,13 +149,20 @@ export async function sendAssistantTurn(params: {
   subjectId: string;
   text: string;
   sessionId?: string;
+  /** 用户主动「开新对话」：跳过续接，直接开一条干净的 */
+  newSession?: boolean;
   now?: Date;
 }): Promise<AssistantChatResult> {
   const now = params.now ?? new Date();
   const subject = await loadSubject(params.subjectId);
   if (!subject) throw new ApiError(404, "用户不存在");
 
-  const resolved = await resolveSession(params.subjectId, params.sessionId, now);
+  const resolved = await resolveSession(
+    params.subjectId,
+    params.sessionId,
+    now,
+    params.newSession === true,
+  );
   let thread = resolved.record;
   let messages: SessionMessage[] = [...thread.messages];
 
@@ -179,6 +209,8 @@ export async function sendAssistantTurn(params: {
       bookedCount: await countBooked(params.subjectId, now),
       degraded: false,
       notice: null,
+      blocked: true,
+      strikeLevel: scope.strikeLevel,
     };
   }
 
@@ -231,6 +263,11 @@ export async function sendAssistantTurn(params: {
     bookedCount: await countBooked(params.subjectId, now),
     degraded,
     notice,
+    blocked: false,
+    // 正常答完也要带回去：前端拿它决定要不要继续显示「新对话」提示。
+    // 上一轮被拦过之后用户改问正经问题，这里会自然回到 first（数值清零不了，
+    // 但 first 就是「不提示」的那一档，效果一样）。
+    strikeLevel: scope.strikeLevel,
   };
 }
 
@@ -268,7 +305,23 @@ async function findSession(subjectId: string, now: Date) {
  * 说明他回来了，不该让他看到一个新窗口而丢掉刚聊的条件。超过 1 小时才真的
  * 让它躺着 —— 那时候他连聊到哪都不记得了，新开一条更干净。
  */
-async function resolveSession(subjectId: string, sessionId: string | undefined, now: Date) {
+async function resolveSession(
+  subjectId: string,
+  sessionId: string | undefined,
+  now: Date,
+  newSession = false,
+) {
+  // 用户主动开新对话：不续接、不复用、不继承。
+  //
+  // 为什么不能只让前端「清空 sessionId」来表达这个意图：清空之后服务端会
+  // 走到下面的第 2 步（30 分钟内活跃会话），把刚才那条原样捞回来 ——
+  // 用户的「重开」被系统悄悄撤销了，表现就是「点了没反应」。
+  // 所以意图必须显式传过来，服务端才会真的跳过兜底。
+  if (newSession) {
+    await closeAllActive(subjectId);
+    return { record: await sessions.create(subjectId), created: true };
+  }
+
   if (sessionId) {
     const owned = await sessions.findOwned(sessionId, subjectId);
     if (owned) {
@@ -295,6 +348,26 @@ async function resolveSession(subjectId: string, sessionId: string | undefined, 
   // 兜底清扫也会把它们当成新鲜会话（lastActiveAt 被别的写操作推过）。
   await closeStaleSessions(subjectId, idleCutoff(now));
   return { record: await sessions.create(subjectId), created: true };
+}
+
+/**
+ * 把该被试所有活会话无条件结掉 —— 用户主动开新对话时用。
+ *
+ * 与 `closeStaleSessions` 的区别只有一点：不看空闲时间。用户点了「新对话」，
+ * 哪怕他上一句在 3 秒前说的，那条也该结掉 —— 是他自己要求换个窗口的。
+ *
+ * 用 `SUPERSEDED` 而不是 `MANUAL`：`MANUAL` 是「用户明确说聊完了」，
+ * 而这里他只是换了个话题，这两件事在复盘时该分得开。
+ */
+async function closeAllActive(subjectId: string): Promise<void> {
+  // 注意不能复用 closeStaleSessions：那个函数的 cutoff 是「早于它就结掉」，
+  // 传 epoch 进去反而一条都不会结（判断是 `lastActiveAt >= cutoff` 就 return）。
+  // 这里直接循环结掉，上限同样只是防脏数据死循环的护栏。
+  for (let i = 0; i < 10; i += 1) {
+    const active = await sessions.findActiveBySubject(subjectId, new Date(0));
+    if (!active) return;
+    await sessions.finalize(active.id, "SUPERSEDED");
+  }
 }
 
 /**

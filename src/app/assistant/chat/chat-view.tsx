@@ -33,6 +33,10 @@ type ChatResult = {
   bookedCount: number;
   degraded: boolean;
   notice: string | null;
+  /** 这一轮被范围闸拦了（没进主模型）。拒答也是一条 assistant 消息，光看 messages 分不出来 */
+  blocked: boolean;
+  /** `repeat` = 本会话里第二次越界，这时才给「开个新对话」的出口 */
+  strikeLevel: "first" | "repeat";
 };
 
 /** search_experiments 的返回（只取渲染需要的字段） */
@@ -60,6 +64,15 @@ type SearchPayload = {
 
 const QUICK_WORDS = ["周三下午有空", "奖励高的", "一个小时以内"];
 
+/**
+ * 点「新对话」后本地先显示的开场白。
+ *
+ * 与服务端的 `ASSISTANT_OPENING` 同义 —— 但那份在 server 模块里，
+ * 客户端组件不能 import（会把 prisma 拖进 bundle）。两句话不一样也无所谓：
+ * 这句只在「还没发出去」的瞬间存在，发出去之后服务端返回的整份 messages 会覆盖它。
+ */
+const FRESH_OPENING = "好，我们重新开始。你想参加什么实验？";
+
 export function AssistantChatView({
   initial,
   scheduleSummary,
@@ -70,6 +83,15 @@ export function AssistantChatView({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  /**
+   * 用户点了「新对话」，但还没说第一句。
+   *
+   * 不在点击时就请求服务端：服务端开 session 必须带一条用户消息（`create` 之后
+   * 立刻要 save），凭空造一条假的会让历史里多出一条用户没说过的话。
+   * 所以点击只切本地视图，真正的新建发生在下一句发送时（带 `newSession: true`）。
+   * 副作用是「点了新对话但没说话就关掉浏览器」= 什么都没发生，这正好是想要的。
+   */
+  const [fresh, setFresh] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const { data } = useQuery({
@@ -97,16 +119,18 @@ export function AssistantChatView({
   })();
 
   const send = useMutation({
-    mutationFn: (content: string) =>
+    mutationFn: (input: { text: string; newSession?: boolean }) =>
       postJson<ChatResult>("/api/assistant/chat", {
-        content,
+        content: input.text,
         // 带上服务端给的 sessionId：不带就只能靠 30 分钟时间窗猜，
         // 用户在两个窗口/两次访问之间切换时会接错会话。
-        sessionId: view.sessionId || undefined,
+        sessionId: input.newSession ? undefined : view.sessionId || undefined,
+        newSession: input.newSession,
       }),
     onSuccess: (next) => {
       queryClient.setQueryData(["assistant-chat"], next);
       setDraft("");
+      setFresh(false);
     },
     onError: (error: Error) => toast(error.message, "error"),
   });
@@ -118,7 +142,19 @@ export function AssistantChatView({
   function submit() {
     const text = draft.trim();
     if (!text) return;
-    send.mutate(text);
+    send.mutate({ text, newSession: fresh || undefined });
+  }
+
+  function startFresh() {
+    // 只切本地视图。真正的 create 发生在下一句（见 `fresh` 的注释）。
+    setFresh(true);
+    setDraft("");
+    queryClient.setQueryData<ChatResult>(["assistant-chat"], {
+      ...view,
+      messages: [],
+      blocked: false,
+      strikeLevel: "first",
+    });
   }
 
   return (
@@ -127,6 +163,21 @@ export function AssistantChatView({
         title="实验助手"
         subtitle={
           view.bookedCount > 0 ? `已约 ${view.bookedCount} 场，还想参加什么？` : "我帮你找合适的实验"
+        }
+        right={
+          // 一直可见，不看状态。原先那个通往门厅的入口只在「没有任何安排」时
+          // 渲染，结果约过一场的人反而找不到路 —— 同一个教训不能再犯一次。
+          // 已经在新对话里（fresh 且没说过话）就不显示：那时候点了也没事发生。
+          fresh && view.messages.length === 0 ? null : (
+            <button
+              type="button"
+              onClick={startFresh}
+              disabled={send.isPending}
+              className="press rounded-pill border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-soft active:bg-mist disabled:opacity-40"
+            >
+              新对话
+            </button>
+          )
         }
         profile={{ role: "SUBJECT" }}
       />
@@ -168,7 +219,15 @@ export function AssistantChatView({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {fresh && view.messages.length === 0 ? (
+          <div className="mb-3 flex items-start gap-2">
+            <Avatar />
+            <div className="max-w-[80%] rounded-[12px] rounded-tl-[4px] border border-line bg-surface px-3 py-2 text-[14px] leading-[22px] text-ink">
+              {FRESH_OPENING}
+            </div>
+          </div>
+        ) : null}
         {view.messages.map((m, i) => (
           <MessageBlock key={`${m.createdAt}-${i}`} message={m} showCards={i === lastSearchIndex} />
         ))}
@@ -181,7 +240,7 @@ export function AssistantChatView({
                 key={text}
                 type="button"
                 disabled={send.isPending}
-                onClick={() => send.mutate(text)}
+                onClick={() => send.mutate({ text, newSession: fresh || undefined })}
                 className="press rounded-pill border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-soft active:bg-mist disabled:opacity-50"
               >
                 {text}
@@ -202,6 +261,25 @@ export function AssistantChatView({
         ) : null}
 
         {view.notice ? <p className="my-3 text-center text-[11px] text-warn">{view.notice}</p> : null}
+
+        {/* 连续第二次越界才给这个出口。
+            第一次越界只留一句软话术 —— 用户可能只是随口一问，弹组件反而像赶人。
+            第二次就是明显在试探了，这时候"换个话题重开"才是有用的建议。 */}
+        {view.blocked && view.strikeLevel === "repeat" ? (
+          <div className="mb-3 rounded-card border border-line bg-mist/60 p-3">
+            <p className="text-[12px] font-medium text-ink">要不我们换个话题重新开始？</p>
+            <p className="mt-1 text-[11px] leading-5 text-ink-soft">
+              开个新对话就能接着找实验。你已经约好的都在「我的预约」里，不会丢。
+            </p>
+            <button
+              type="button"
+              onClick={startFresh}
+              className="press mt-2 rounded-pill bg-moss px-3 py-1.5 text-[12px] text-white active:opacity-90"
+            >
+              开个新对话
+            </button>
+          </div>
+        ) : null}
 
         <div ref={bottomRef} className="h-2" />
       </div>

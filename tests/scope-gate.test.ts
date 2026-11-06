@@ -119,6 +119,34 @@ describe("checkScope", () => {
     expect(d.hint).toBeNull();
   });
 
+  // 前端靠 strikeLevel 决定要不要给「开个新对话」的出口，所以它必须准确。
+  // 只看 blocked 不够：第一次越界和第二次越界都是 blocked=true，
+  // 但只有第二次才值得建议用户换窗口。
+  it("第一次越界 strikeLevel = first，第二次 = repeat", async () => {
+    const first = await checkScope({
+      text: "a",
+      classifier: fixed("OUT_OF_SCOPE"),
+      counter: { outOfScope: 0 },
+    });
+    expect(first.strikeLevel).toBe("first");
+
+    const second = await checkScope({
+      text: "b",
+      classifier: fixed("OUT_OF_SCOPE"),
+      counter: first.counter,
+    });
+    expect(second.strikeLevel).toBe("repeat");
+  });
+
+  it("正常对话也带 strikeLevel（first），前端不用为它写空值分支", async () => {
+    const d = await checkScope({
+      text: "我想约个实验",
+      classifier: fixed("IN_SCOPE"),
+      counter: { outOfScope: 0 },
+    });
+    expect(d.strikeLevel).toBe("first");
+  });
+
   it("空输入不调分类器（规则层直接放行）", async () => {
     const { classifier, calls } = counting("OUT_OF_SCOPE");
     const d = await checkScope({ text: "   ", classifier, counter: { outOfScope: 0 } });

@@ -24,12 +24,21 @@ import {
   type ScopeKind,
   type ScopeVerdict,
   type StrikeCounter,
+  type StrikeLevel,
 } from "@/domain/scope-guard";
 
 export type ScopeDecision = {
   kind: ScopeKind;
   /** 是否要拦下这一轮（不进主模型） */
   blocked: boolean;
+  /**
+   * 这次拦截的强度档。前端靠它决定要不要建议「开个新对话」。
+   *
+   * 只有 `blocked` 一个布尔不够：第一次越界是「你问的这个我帮不上」，
+   * 第二次是「你在试探」—— 两者的 UI 诉求完全不同（后者才值得给出口）。
+   * 这个值本来就在算（`strikeLevel(counter)`），只是之前没往上传。
+   */
+  strikeLevel: StrikeLevel;
   /** 拦下时直接回给用户的话术（已按软硬档选好）；不拦时为 null */
   reply: string | null;
   /** 不拦但要追加在回复末尾的引导语（ADJACENT 用） */
@@ -51,12 +60,14 @@ export async function checkScope(input: {
 }): Promise<ScopeDecision> {
   const verdict = await decide(input.text, input.classifier);
   const counter = nextStrike(input.counter, verdict.kind);
+  const level = strikeLevel(counter);
 
   if (shouldBlock(verdict)) {
     return {
       kind: verdict.kind,
       blocked: true,
-      reply: outOfScopeReply(strikeLevel(counter)),
+      strikeLevel: level,
+      reply: outOfScopeReply(level),
       hint: null,
       counter,
     };
@@ -65,6 +76,7 @@ export async function checkScope(input: {
   return {
     kind: verdict.kind,
     blocked: false,
+    strikeLevel: level,
     reply: null,
     hint: verdict.kind === "ADJACENT" ? ADJACENT_HINT : null,
     counter,

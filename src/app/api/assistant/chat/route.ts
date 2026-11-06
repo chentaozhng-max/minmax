@@ -25,6 +25,8 @@ export const GET = handle(async (req: Request) => {
 export const POST = handle(async (req: Request) => {
   const user = await requireUser();
   const body = await req.json();
-  const { content, sessionId } = assistantChatMessageSchema.parse(body);
-  return ok(await sendAssistantTurn({ subjectId: user.id, text: content, sessionId }));
+  const { content, sessionId, newSession } = assistantChatMessageSchema.parse(body);
+  return ok(
+    await sendAssistantTurn({ subjectId: user.id, text: content, sessionId, newSession }),
+  );
 });
