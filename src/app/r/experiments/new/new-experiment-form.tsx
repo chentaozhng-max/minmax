@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ChevronRight, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
+import { Tour, type TourStep } from "@/components/tour";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { SlotTimetable, toTimetableSlots, type TimetableSlot } from "@/components/slot-timetable";
 import { PublishBlocked } from "@/components/publish-blocked";
@@ -36,6 +37,51 @@ import { OPEN_ANYTIME_DEADLINE } from "@/domain/experiment-rules";
  * 判定本身全部来自 `@/domain/experiment-draft` 与 `@/domain/experiment-rules`，
  * 页面只负责把结果画出来 —— 同一套规则也用在服务端和发布助手上。
  */
+/**
+ * 发布流程分三步，教程也跟着分三段：走到哪一步讲哪一步。
+ *
+ * 不串成一条跨页教程 —— 点「下一步」要跳步、等重渲染、再找元素，
+ * 中间任何一环慢一点就会高亮到空处。分开弹反而稳，也不会一次砸六个气泡。
+ */
+const PUBLISH_TOUR: Record<number, TourStep[]> = {
+  1: [
+    {
+      target: '[data-tour="mode"]',
+      title: "先定线上还是线下",
+      body: "线下要排时段、被试到实验室来；线上是填完问卷就结束。这个选择会决定后面两步长什么样。",
+    },
+    {
+      target: '[data-tour="reward"]',
+      title: "奖励写多少",
+      body: "被试实际拿到的钱。线上一般 20–50 元，按任务时长给；太低了没人报，太高了预算吃不住。",
+    },
+    {
+      target: '[data-tour="credit"]',
+      title: "信誉门槛",
+      body: "低于这个分数的被试报不了名。默认 0 就是谁都能报；被放过鸽子的话可以调高。",
+    },
+  ],
+  2: [
+    {
+      target: '[data-tour="schedule"]',
+      title: "线上实验的时间形态",
+      body: "一次性填完 = 只填一次；连续多天 = 每天一次，用于日记 / 追踪研究；固定场次 = 约好具体时间，被试报名后按时上线做。",
+    },
+    {
+      target: '[data-tour="timetable"]',
+      title: "点格子排时段",
+      body: "点一下加一段，再点一下取消。每段多长在第一步设的时长决定，过去的时间点不了。",
+    },
+  ],
+  3: [
+    {
+      target: '[data-tour="preflight"]',
+      title: "发布前先看这里",
+      body: "有红色就说明发不出去，点「一键改好」能自动修大部分问题。全绿了再点下面的「发布实验」。",
+    },
+  ],
+};
+
 export function NewExperimentForm({
   today,
   nowIso,
@@ -55,6 +101,8 @@ export function NewExperimentForm({
 function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: string }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
+  /** 当前这一步的新手引导是否打开 */
+  const [tourOpen, setTourOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [title, setTitle] = useState("");
@@ -256,6 +304,23 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
     setStep((s) => Math.min(3, s + 1));
   }
 
+  /**
+   * 走到哪一步就弹哪一步的引导；这一步看过了就不再弹。
+   * 第 3 步要等体检算完 —— 否则高亮框会罩在一段还没渲染出来的空地上。
+   */
+  useEffect(() => {
+    const key = `psymatch:tour:publish:step${step}`;
+    if (localStorage.getItem(key)) return;
+    const delay = step === 3 ? 500 : 350;
+    const timer = window.setTimeout(() => setTourOpen(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [step]);
+
+  function closeTour() {
+    setTourOpen(false);
+    localStorage.setItem(`psymatch:tour:publish:step${step}`, "1");
+  }
+
   async function submit(publish: boolean) {
     if (blocking.length > 0) {
       return toast(`还有 ${blocking.length} 项要补：${blocking[0].message}`, "error");
@@ -347,7 +412,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
       <div className="px-4 pt-4">
         {step === 1 ? (
           <div className="space-y-3">
-            <Field label="实验形式">
+            <Field label="实验形式" data-tour="mode">
               <div className="grid grid-cols-2 gap-2">
                 {(
                   [
@@ -453,7 +518,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                   onChange={(e) => setDurationMin(e.target.value.replace(/\D/g, ""))}
                 />
               </Field>
-              <Field label="奖励金额（元）">
+              <Field label="奖励金额（元）" data-tour="reward">
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[15px] text-ink-soft">
                     ¥
@@ -513,7 +578,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
               />
             </Field>
 
-            <Field label="信誉分门槛" hint="0–100">
+            <Field label="信誉分门槛" hint="0–100" data-tour="credit">
               <Input
                 inputMode="numeric"
                 value={minCreditScore}
@@ -553,7 +618,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                 </p>
               </div>
 
-              <div className="grid gap-2">
+              <div className="grid gap-2" data-tour="schedule">
                 {(
                   [
                     { key: "ANYTIME", label: "一次性填完", hint: "只填一次，提交即完成" },
@@ -747,6 +812,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                 </div>
               ) : null}
 
+              <div data-tour="timetable">
               <SlotTimetable
                 slots={slots}
                 durationMin={Number(durationMin) || 30}
@@ -754,6 +820,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                 today={today}
                 onChange={setSlots}
               />
+              </div>
             </div>
 
             <p className="px-1 text-[11px] leading-5 text-ink-soft">
@@ -766,10 +833,12 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
 
         {step === 3 ? (
           <div className="space-y-3">
+            <div data-tour="preflight">
             <PreflightPanel
               issues={issues}
               onFixDeadline={suggestedDeadline ? fixDeadline : undefined}
             />
+            </div>
 
             <div className="rounded-card border border-line bg-surface p-4">
               <h3 className="text-[16px] font-semibold text-ink">{title}</h3>
@@ -890,6 +959,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
           </div>
         </div>
       </div>
+      <Tour steps={PUBLISH_TOUR[step] ?? []} open={tourOpen} onDone={closeTour} />
     </main>
   );
 }

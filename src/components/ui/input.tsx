@@ -39,13 +39,16 @@ export function Field({
   label,
   hint,
   children,
+  "data-tour": tour,
 }: {
   label: string;
   hint?: string;
   children: React.ReactNode;
+  /** 新手引导的锚点，透到最外层 label 上 */
+  "data-tour"?: string;
 }) {
   return (
-    <label className="block">
+    <label className="block" data-tour={tour}>
       <span className="mb-1.5 flex items-baseline justify-between">
         <span className="text-[13px] font-medium text-ink">{label}</span>
         {hint ? <span className="text-2xs text-ink-soft">{hint}</span> : null}
