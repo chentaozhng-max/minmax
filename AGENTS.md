@@ -323,6 +323,8 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
     - 线上「固定场次」复用线下课程表，slots 照常建；「连续多天」不建 slots，靠 windowStart + repeatCount。
     - 答卷后台的「完成情况」按**人去重**（`summarizeRepeats`），四宫格按**份**算 ——
       两个口径都对，但标签必须带单位，否则主试会拿 6 份去和 3 人对。
+    - 长程实验的答卷列表**按人聚合**（`groupResponsesByPerson`），一人一行。判定优先用库里的
+      `passed`，没有才按分数线算 —— 只按分数线算会和「达标 N 份」对不上（踩过）。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -356,7 +358,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    67 个 Vitest 文件 / 796 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    68 个 Vitest 文件 / 805 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -423,7 +425,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`796 tests passed`／`✅ check-layers: 237 个文件通过（L1–L7）`／
+**验收判据是输出**：`805 tests passed`／`✅ check-layers: 237 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

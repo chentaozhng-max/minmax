@@ -154,10 +154,17 @@
       按最高那一档归一会画成六条一样长的满格，样本少时看着像「每档很多人」。
     - 只有一份答卷时不报 SD（返回 null）—— 一个人没有离散程度可言。
     - 落点：`domain/questionnaire.ts` 的 `describeScores` + `tests/score-summary.test.ts` 10 例。
+21. **答卷按人看**：连续多天的实验里，一个人填 7 天就有 7 份卷，按份列出来根本看不出「谁在坚持、谁掉队了」。
+    现在一人一行：「周叙 · 填了 3/3 天 · 均分 55.3 · 复旦大学 · 通过」，点开看他每天各填了什么。
+    - 判定优先用库里存的 `passed`，没有才按分数线算 —— 只按分数线算会和上面的「达标 N 份」对不上。
+    - 判定只看第 1 轮（基线），和 `hasPassed` 同一口径。
+    - 一场只填一次的实验不受影响（一份就是一个人，还是按份列）。
+    - 顺带把「理由 + 分项 + 逐题答案」抽成 `AnswerBlock`，两种视图共用。
+    - 落点：`domain/question-stats.ts` 的 `groupResponsesByPerson` + `tests/person-group.test.ts` 9 例。
 
 ### 验证（本次实测）
 
-- `npm test` → **67 文件 / 796 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/repeat-stats.test.ts` 6 例、`tests/score-summary.test.ts` 10 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm test` → **68 文件 / 805 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/repeat-stats.test.ts` 6 例、`tests/score-summary.test.ts` 10 例、`tests/person-group.test.ts` 9 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
 - `npm run lint:layers` → 237 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功

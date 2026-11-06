@@ -12,6 +12,8 @@
  *      主试看的是「从不 → 每天」这个梯度，打乱了反而读不出趋势。
  */
 
+import { passState } from "@/domain/questionnaire";
+
 import type { AnswerMap, AnswerValue } from "@/domain/questionnaire";
 import { QuestionType } from "@/domain/questionnaire";
 
@@ -161,4 +163,67 @@ export function summarizeRepeats(
     averageRounds: participants === 0 ? 0 : Math.round((filled / participants) * 10) / 10,
     perRound,
   };
+}
+
+/* ─────────────────────────────────────────────
+ * 按人聚合（长程重复测量）
+ *
+ * 答卷是一份一份的，但主试脑子里的单位是「人」：
+ * 「周叙填了 3 天、林知夏填了 2 天」比「收了 6 份卷」有用得多。
+ * ───────────────────────────────────────────── */
+
+export type PersonGroup<T> = {
+  subjectId: string;
+  /** 这个人填过的所有轮次，按 round 升序 */
+  rounds: T[];
+  doneCount: number;
+  /** 第 1 轮（基线）的判定 —— 入选与否看基线，后面几天只是数据 */
+  firstPass: "PASS" | "FAIL" | "UNKNOWN";
+  /** 这个人所有轮次的平均分（一位小数）；一份都没分时为 null */
+  averageScore: number | null;
+};
+
+export function groupResponsesByPerson<
+  T extends {
+    subjectId: string;
+    round: number;
+    score: number | null;
+    passed: boolean | null;
+  },
+>(responses: T[], passScore: number | null): PersonGroup<T>[] {
+  const map = new Map<string, T[]>();
+  for (const response of responses) {
+    const list = map.get(response.subjectId) ?? [];
+    list.push(response);
+    map.set(response.subjectId, list);
+  }
+
+  return [...map.entries()]
+    .map(([subjectId, rounds]) => {
+      const sorted = [...rounds].sort((a, b) => a.round - b.round);
+      const first = sorted.find((r) => r.round === 1) ?? sorted[0];
+      const scores = sorted.filter((r) => typeof r.score === "number").map((r) => r.score as number);
+
+      return {
+        subjectId,
+        rounds: sorted,
+        doneCount: new Set(sorted.map((r) => r.round)).size,
+        /**
+         * 和 hasPassed 同一口径：只看基线那一轮。
+         * 判定优先用库里存的 `passed`（主试可能手改过），没有才按分数线算 ——
+         * 只按分数线算会和上面的「达标 N 份」对不上。
+         */
+        firstPass:
+          first?.passed === true
+            ? "PASS"
+            : first?.passed === false
+              ? "FAIL"
+              : passState(first?.score ?? null, passScore),
+        averageScore: scores.length
+          ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+          : null,
+      };
+    })
+    // 填得多的排前面；一样多按平均分降序
+    .sort((a, b) => b.doneCount - a.doneCount || (b.averageScore ?? -1) - (a.averageScore ?? -1));
 }

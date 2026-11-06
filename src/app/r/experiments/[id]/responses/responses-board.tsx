@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BarChart3, ChevronDown, ChevronUp, Download, MailX, MessageCircle, RefreshCw, Send, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tour, type TourStep } from "@/components/tour";
+import { groupResponsesByPerson } from "@/domain/question-stats";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/toast";
 import { postJson } from "@/lib/api-client";
@@ -128,6 +129,8 @@ export function ResponsesBoard({
   const [chattingId, setChattingId] = useState<string | null>(null);
   /** 新手引导：只在有答卷时弹一次 */
   const [tourOpen, setTourOpen] = useState(false);
+  /** 按人看时，展开的是哪个人 */
+  const [expandedPerson, setExpandedPerson] = useState<string | null>(null);
   const [busy, setBusy] = useState<"suggest" | "save" | "score" | "invite" | "decline" | null>(null);
   const [filter, setFilter] = useState<PassFilter>("ALL");
   const [showStats, setShowStats] = useState(false);
@@ -141,6 +144,15 @@ export function ResponsesBoard({
   const stats = showStats ? summarizeAnswers(questions, responses) : [];
   /** 还没告知过的未通过者 —— 已经告知过的不该再发一次 */
   const declinedPending = responses.filter((r) => r.passState === "FAIL" && !r.declinedAt).length;
+
+  /**
+   * 连续多天的实验按人看：一个人一行，点开看他填了哪几天。
+   * 一场实验只填一次的那种，按份看才对（一份就是一个人）。
+   */
+  const isRepeat = repeatStat.repeatCount > 1;
+  // 用全量聚合再按人筛：`visible` 已经按份筛过，两处都筛会把结果筛窄
+  const allGroups = isRepeat ? groupResponsesByPerson(responses, threshold) : [];
+  const personGroups = filter === "ALL" ? allGroups : allGroups.filter((g) => g.firstPass === filter);
 
   async function suggest() {
     if (!goal.trim()) return toast("先说一句你的筛选要求", "error");
@@ -549,130 +561,189 @@ export function ResponsesBoard({
           </p>
         ) : null}
 
-        {responses.length > 0 && visible.length === 0 ? (
+        {responses.length > 0 && (isRepeat ? personGroups.length === 0 : visible.length === 0) ? (
           <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-[12px] text-ink-soft">
             这一类里没有答卷。
           </p>
         ) : null}
 
-        {visible.map((row) => {
-          const open = expanded === row.id;
-          const isQualified =
-            row.passed === true ||
-            (row.passed === null && row.score !== null && threshold !== null && row.score >= threshold);
-          return (
-            <div key={row.id} className="rounded-card border border-line bg-surface">
-              <button
-                type="button"
-                onClick={() => setExpanded(open ? null : row.id)}
-                className="flex w-full items-center gap-2 px-3.5 py-3 text-left"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="truncate text-[13px] text-ink">{row.name}</span>
-                    {row.round > 1 ? (
-                      <span className="num shrink-0 rounded-full bg-mist px-1.5 text-[10px] text-ink-soft">
-                        第 {row.round} 次
+        {isRepeat
+          ? personGroups.map((group) => {
+              const first = group.rounds[0];
+              const open = expandedPerson === group.subjectId;
+              return (
+                <div key={group.subjectId} className="rounded-card border border-line bg-surface">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedPerson(open ? null : group.subjectId)}
+                    className="flex w-full items-center gap-2 px-3.5 py-3 text-left"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-[13px] text-ink">{first.name}</span>
+                        {first.verified ? (
+                          <span className="rounded-full bg-verify-tint px-1.5 text-[10px] text-verify">
+                            已认证
+                          </span>
+                        ) : null}
                       </span>
-                    ) : null}
-                    {row.verified ? (
-                      <span className="rounded-full bg-verify-tint px-1.5 text-[10px] text-verify">已认证</span>
-                    ) : null}
-                    {row.invitedAt ? (
-                      <span className="rounded-full bg-moss-tint px-1.5 text-[10px] text-moss">已通知</span>
-                    ) : null}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11px] text-ink-soft">
-                    {row.school ?? "未填学校"} · 信誉 {row.credit} ·{" "}
-                    {new Date(row.submittedAt).toLocaleString("zh-CN", { hour12: false })}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    "num shrink-0 rounded-full px-2 py-0.5 text-[12px]",
-                    row.score === null
-                      ? "bg-mist text-ink-soft"
-                      : isQualified
-                        ? "bg-moss-tint text-moss"
-                        : "bg-[#f9e9e6] text-danger",
-                  )}
-                >
-                  {row.score === null ? "待评" : `${row.score} 分`}
-                </span>
-                {row.declinedAt ? (
-                  <span className="shrink-0 rounded-full bg-mist px-1.5 py-0.5 text-[10px] text-ink-soft">
-                    已告知
-                  </span>
-                ) : null}
-                {open ? <ChevronUp size={15} className="text-ink-soft" /> : <ChevronDown size={15} className="text-ink-soft" />}
-              </button>
+                      <span className="num mt-0.5 block truncate text-[11px] text-ink-soft">
+                        填了 {group.doneCount}/{repeatStat.repeatCount} 天 · 均分{" "}
+                        {group.averageScore ?? "—"} · {first.school ?? "未填学校"}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[11px]",
+                        group.firstPass === "PASS"
+                          ? "bg-moss-tint text-moss"
+                          : group.firstPass === "FAIL"
+                            ? "bg-[#f9e9e6] text-danger"
+                            : "bg-mist text-ink-soft",
+                      )}
+                    >
+                      {group.firstPass === "PASS" ? "通过" : group.firstPass === "FAIL" ? "未通过" : "待定"}
+                    </span>
+                    {open ? (
+                      <ChevronUp size={15} className="text-ink-soft" />
+                    ) : (
+                      <ChevronDown size={15} className="text-ink-soft" />
+                    )}
+                  </button>
 
-              {open ? (
-                <div className="border-t border-line px-3.5 py-3">
-                  {row.reason ? (
-                    <p className="mb-2 rounded-[6px] bg-mist/60 px-2.5 py-2 text-[11px] leading-5 text-ink-soft">
-                      评分理由：{row.reason}
-                    </p>
-                  ) : null}
+                  {open ? (
+                    <div className="border-t border-line">
+                      {group.rounds.map((r) => {
+                        const dayOpen = expanded === r.id;
+                        return (
+                          <div key={r.id} className="border-b border-line px-3.5 py-2.5 last:border-0">
+                            <button
+                              type="button"
+                              onClick={() => setExpanded(dayOpen ? null : r.id)}
+                              className="flex w-full items-center gap-2 text-left"
+                            >
+                              <span className="num shrink-0 text-[11px] text-ink-soft">
+                                第 {r.round} 天
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">
+                                {new Date(r.submittedAt).toLocaleString("zh-CN", { hour12: false })}
+                              </span>
+                              <span
+                                className={cn(
+                                  "num shrink-0 text-[12px]",
+                                  r.score === null ? "text-ink-soft" : "text-ink",
+                                )}
+                              >
+                                {r.score === null ? "待评" : `${r.score} 分`}
+                              </span>
+                              {dayOpen ? (
+                                <ChevronUp size={13} className="text-ink-soft" />
+                              ) : (
+                                <ChevronDown size={13} className="text-ink-soft" />
+                              )}
+                            </button>
 
-                  {/* 分项：主试要能自己加出总分，不然「92 分」还是黑箱 */}
-                  {row.breakdown && row.breakdown.length > 0 ? (
-                    <div className="mb-2 rounded-[6px] border border-line px-2.5 py-2">
-                      <p className="text-[10px] text-ink-soft">分项</p>
-                      <div className="mt-1 space-y-0.5">
-                        {row.breakdown.map((part, i) => (
-                          <div key={i} className="flex items-baseline justify-between gap-2">
-                            <span className="text-[11px] leading-5 text-ink">
-                              {part.item}
-                              {part.note ? (
-                                <span className="ml-1 text-[10px] text-ink-soft">{part.note}</span>
-                              ) : null}
-                            </span>
-                            <span className="num shrink-0 text-[11px] text-ink">
-                              {part.points}
-                              {part.max !== null ? (
-                                <span className="text-ink-soft">/{part.max}</span>
-                              ) : null}
-                            </span>
+                            {dayOpen ? (
+                              <div className="mt-2">
+                                <AnswerBlock row={r} questions={questions} />
+                              </div>
+                            ) : null}
                           </div>
-                        ))}
+                        );
+                      })}
+
+                      {/* 追问放在人这一层：按天分开更容易看混，问的是这个人不是这份卷 */}
+                      <div className="px-3.5 py-2.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={chattingId === first.subjectId}
+                          onClick={() => openChat(first.subjectId)}
+                        >
+                          <MessageCircle size={13} className="mr-1" />
+                          发消息
+                        </Button>
                       </div>
-                      <p className="num mt-1 border-t border-line pt-1 text-[10px] text-ink-soft">
-                        合计 {row.breakdown.reduce((sum, part) => sum + part.points, 0)} 分
-                      </p>
                     </div>
                   ) : null}
-                  <div className="space-y-2">
-                    {questions.map((q, i) => (
-                      <div key={q.id}>
-                        <p className="text-[11px] text-ink-soft">
-                          <span className="num mr-1">{i + 1}.</span>
-                          {q.title}
-                        </p>
-                        <p className="mt-0.5 text-[12px] leading-5 text-ink">
-                          {formatAnswer(q, row.answers[q.id])}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* 追问用的入口：比如「你说的『偶尔』具体多久一次」 */}
-                  <div className="mt-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      loading={chattingId === row.subjectId}
-                      onClick={() => openChat(row.subjectId)}
-                    >
-                      <MessageCircle size={13} className="mr-1" />
-                      发消息
-                    </Button>
-                  </div>
                 </div>
-              ) : null}
-            </div>
-          );
-        })}
+              );
+            })
+          : visible.map((row) => {
+              const open = expanded === row.id;
+              const isQualified =
+                row.passed === true ||
+                (row.passed === null && row.score !== null && threshold !== null && row.score >= threshold);
+              return (
+                <div key={row.id} className="rounded-card border border-line bg-surface">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(open ? null : row.id)}
+                    className="flex w-full items-center gap-2 px-3.5 py-3 text-left"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-[13px] text-ink">{row.name}</span>
+                        {row.verified ? (
+                          <span className="rounded-full bg-verify-tint px-1.5 text-[10px] text-verify">
+                            已认证
+                          </span>
+                        ) : null}
+                        {row.invitedAt ? (
+                          <span className="rounded-full bg-moss-tint px-1.5 text-[10px] text-moss">
+                            已通知
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11px] text-ink-soft">
+                        {row.school ?? "未填学校"} · 信誉 {row.credit} ·{" "}
+                        {new Date(row.submittedAt).toLocaleString("zh-CN", { hour12: false })}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "num shrink-0 rounded-full px-2 py-0.5 text-[12px]",
+                        row.score === null
+                          ? "bg-mist text-ink-soft"
+                          : isQualified
+                            ? "bg-moss-tint text-moss"
+                            : "bg-[#f9e9e6] text-danger",
+                      )}
+                    >
+                      {row.score === null ? "待评" : `${row.score} 分`}
+                    </span>
+                    {row.declinedAt ? (
+                      <span className="shrink-0 rounded-full bg-mist px-1.5 py-0.5 text-[10px] text-ink-soft">
+                        已告知
+                      </span>
+                    ) : null}
+                    {open ? (
+                      <ChevronUp size={15} className="text-ink-soft" />
+                    ) : (
+                      <ChevronDown size={15} className="text-ink-soft" />
+                    )}
+                  </button>
+
+                  {open ? (
+                    <div className="border-t border-line px-3.5 py-3">
+                      <AnswerBlock row={row} questions={questions} />
+
+                      <div className="mt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={chattingId === row.subjectId}
+                          onClick={() => openChat(row.subjectId)}
+                        >
+                          <MessageCircle size={13} className="mr-1" />
+                          发消息
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
       </div>
 
       <p className="mt-4 text-center text-[11px] leading-5 text-ink-soft">
@@ -681,6 +752,62 @@ export function ResponsesBoard({
 
       <Tour steps={TOUR_STEPS} open={tourOpen} onDone={closeTour} />
     </section>
+  );
+}
+
+/**
+ * 一份答卷的「理由 + 分项 + 逐题答案」。
+ *
+ * 按份看和按人看都要用，抽出来免得两处各写一遍 —— 两边长得不一样时最难维护。
+ */
+function AnswerBlock({ row, questions }: { row: Row; questions: StatQuestion[] }) {
+  return (
+    <>
+      {row.reason ? (
+        <p className="mb-2 rounded-[6px] bg-mist/60 px-2.5 py-2 text-[11px] leading-5 text-ink-soft">
+          评分理由：{row.reason}
+        </p>
+      ) : null}
+
+      {row.breakdown && row.breakdown.length > 0 ? (
+        <div className="mb-2 rounded-[6px] border border-line px-2.5 py-2">
+          <p className="text-[10px] text-ink-soft">分项</p>
+          <div className="mt-1 space-y-0.5">
+            {row.breakdown.map((part, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-2">
+                <span className="text-[11px] leading-5 text-ink">
+                  {part.item}
+                  {part.note ? (
+                    <span className="ml-1 text-[10px] text-ink-soft">{part.note}</span>
+                  ) : null}
+                </span>
+                <span className="num shrink-0 text-[11px] text-ink">
+                  {part.points}
+                  {part.max !== null ? <span className="text-ink-soft">/{part.max}</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="num mt-1 border-t border-line pt-1 text-[10px] text-ink-soft">
+            合计 {row.breakdown.reduce((sum, part) => sum + part.points, 0)} 分
+          </p>
+        </div>
+      ) : null}
+
+      <div className="space-y-2">
+        {questions.map((q, i) => (
+          <div key={q.id}>
+            <p className="text-[11px] text-ink-soft">
+              <span className="num mr-1">{i + 1}.</span>
+              {q.title}
+            </p>
+            <p className="mt-0.5 text-[12px] leading-5 text-ink">
+              {formatAnswer(q, row.answers[q.id])}
+            </p>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
