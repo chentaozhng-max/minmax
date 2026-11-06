@@ -48,6 +48,12 @@ export const createExperimentSchema = z
     needsQuestionnaire: z.boolean().optional(),
     /** 线上实验：全时段可填写，不设截止时间（signupDeadline 会被忽略） */
     openAnytime: z.boolean().optional(),
+    /** 线上实验的时间形态：随时可填 / 连续 N 天每天一次 / 固定场次 */
+    scheduleMode: z.enum(["ANYTIME", "WINDOW", "SCHEDULED"]).optional(),
+    /** WINDOW 的第 1 天，ISO 字符串（只取它落在哪一天） */
+    windowStart: z.string().optional(),
+    /** WINDOW 连续多少天 */
+    repeatCount: z.number().int().min(1).max(60).optional(),
     groupSize: z.number().int().min(2).max(30).nullable().optional(),
     requirements: z.string().optional(),
     minCreditScore: z.number().int().min(0).max(100),
@@ -59,6 +65,16 @@ export const createExperimentSchema = z
   .refine((v) => v.mode === "ONLINE" || v.slots.length >= 1, {
     message: "线下实验至少需要一个时段",
     path: ["slots"],
+  })
+  // 线上「固定场次」也要有时段：它只是把实验室换成了线上，时间照样是刚性的
+  .refine((v) => !(v.mode === "ONLINE" && v.scheduleMode === "SCHEDULED") || v.slots.length >= 1, {
+    message: "线上固定场次至少要有一个场次",
+    path: ["slots"],
+  })
+  // 连续多天必须给开始日期，否则算不出「今天第几天」
+  .refine((v) => !(v.mode === "ONLINE" && v.scheduleMode === "WINDOW") || Boolean(v.windowStart), {
+    message: "连续多天要选第一天",
+    path: ["windowStart"],
   })
   .refine((v) => v.type !== "GROUP" || (v.groupSize ?? 0) >= 2, {
     message: "团体实验必须填写团体人数（≥2）",

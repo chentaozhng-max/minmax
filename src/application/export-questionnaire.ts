@@ -28,6 +28,8 @@ export type ResponseCsvRow = {
   status: string;
   submittedAt: Date;
   invitedAt: Date | null;
+  /** 第几次填（长程重复测量）。非重复测量恒为 1 */
+  round?: number;
 };
 
 export type ResponseCsvInput = {
@@ -49,6 +51,7 @@ export const RESPONSE_CSV_HEADER = [
   "学校",
   "学号",
   "学生认证",
+  "第几次",
   "提交时间",
   "分数",
   "是否通过",
@@ -85,6 +88,7 @@ export function buildResponseCsv(input: ResponseCsvInput): string {
         csvCell(row.subjectSchool),
         csvCell(row.subjectStudentId),
         csvCell(row.subjectVerified ? "已认证" : "未认证"),
+        csvCell(row.round ?? 1),
         csvCell(csvDateTime(row.submittedAt)),
         csvCell(row.score),
         csvCell(passLabel(row, passScore)),

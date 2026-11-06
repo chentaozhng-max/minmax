@@ -69,6 +69,10 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
   const [needsQuestionnaire, setNeedsQuestionnaire] = useState(false);
   /** 线上实验：全时段可填写，不设截止时间（默认，问卷一直开放） */
   const [openAnytime, setOpenAnytime] = useState(true);
+  /** 线上实验的时间形态：随时 / 连续多天 / 固定场次 */
+  const [scheduleMode, setScheduleMode] = useState<"ANYTIME" | "WINDOW" | "SCHEDULED">("ANYTIME");
+  const [windowStart, setWindowStart] = useState(addDaysToDateStr(today, 1));
+  const [repeatCount, setRepeatCount] = useState("7");
   const [groupSize, setGroupSize] = useState("3");
   const [requirements, setRequirements] = useState("");
   const [minCreditScore, setMinCreditScore] = useState("0");
@@ -178,7 +182,10 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
 
   // 线上选了「全时段可填写」就没有截止时间这回事，用远期哨兵让体检里的
   // 「截止必须晚于现在」这条自然通过 —— 与发布接口用的是同一个常量
-  const openEnded = mode === "ONLINE" && openAnytime;
+  // 线上「连续多天」有自己的窗口，不算「全时段可填」；固定场次也一样
+  const openEnded = mode === "ONLINE" && scheduleMode === "ANYTIME" && openAnytime;
+  /** 要显示时段课程表：线下永远要，线上只有「固定场次」要 */
+  const showTimetable = mode === "OFFLINE" || scheduleMode === "SCHEDULED";
 
   // 第 3 步的体检：和发布接口、发布助手用的是同一份规则
   const issues = useMemo(
@@ -216,12 +223,23 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
     if (step === 2) {
       // 线上实验没有时段这一步，直接进确认
       if (mode === "ONLINE") {
+        if (scheduleMode === "WINDOW") {
+          if (!windowStart) return toast("选一个开始日期", "error");
+          const days = Number(repeatCount);
+          if (!days || days < 1 || days > 60) return toast("连续天数要在 1–60 之间", "error");
+        }
+        if (scheduleMode === "SCHEDULED" && slots.length === 0) {
+          return toast("在课程表里点几个场次", "error");
+        }
         // 不设截止时间就不用验；设了就得是个还没到的时刻
-        if (!openAnytime && (Number.isNaN(deadlineMs) || deadlineMs <= nowMs)) {
+        if (scheduleMode === "ANYTIME" && !openAnytime && (Number.isNaN(deadlineMs) || deadlineMs <= nowMs)) {
           return toast("截止时间要么填一个还没到的时刻，要么选「全时段可填写」", "error");
         }
-        setStep(3);
-        return;
+        if (scheduleMode !== "SCHEDULED") {
+          setStep(3);
+          return;
+        }
+        // 固定场次和线下一样要清掉已开始的场次，落到下面的公共校验
       }
       if (slots.length === 0) return toast("在课程表里点几个时段", "error");
       // 排时段的过程中可能跨过了某个时段的开始时间：进确认页前清掉，
@@ -257,6 +275,13 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         mode,
         needsQuestionnaire: needQuestionnaire,
         openAnytime: openEnded,
+        scheduleMode: mode === "ONLINE" ? scheduleMode : undefined,
+        windowStart:
+          mode === "ONLINE" && scheduleMode === "WINDOW" && windowStart
+            ? new Date(`${windowStart}T00:00:00+08:00`).toISOString()
+            : undefined,
+        repeatCount:
+          mode === "ONLINE" && scheduleMode === "WINDOW" ? Number(repeatCount) || 1 : undefined,
         groupSize: type === "GROUP" ? Number(groupSize) : null,
         requirements: requirements.trim() || undefined,
         minCreditScore: Number(minCreditScore),
@@ -264,10 +289,9 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         signupDeadline: openEnded
           ? OPEN_ANYTIME_DEADLINE.toISOString()
           : new Date(`${deadline}:00+08:00`).toISOString(),
-        slots:
-          mode === "ONLINE"
-            ? []
-            : slots.map((s) => ({ startAt: s.startAt, endAt: s.endAt, capacity: s.capacity })),
+        slots: showTimetable
+          ? slots.map((s) => ({ startAt: s.startAt, endAt: s.endAt, capacity: s.capacity }))
+          : [],
         publish: needQuestionnaire ? false : publish,
       });
       toast(
@@ -519,47 +543,40 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
         ) : null}
 
         {step === 2 ? (
-          mode === "ONLINE" ? (
+          <>
+          {mode === "ONLINE" ? (
             <div className="space-y-2.5">
               <div>
-                <h3 className="section-title mb-1.5">问卷开放时间</h3>
+                <h3 className="section-title mb-1.5">什么时候填</h3>
                 <p className="mb-2 text-[11px] leading-4 text-ink-soft">
-                  线上实验没有时段可排：被试在详情页直接填问卷，提交即完成。
-                  你可以在问卷里设通过线，决定谁进入后续环节。
+                  线上不用到实验室，但时间要不要约定由你定。选了什么，被试端就按什么显示。
                 </p>
               </div>
 
               <div className="grid gap-2">
                 {(
                   [
-                    {
-                      key: true,
-                      label: "全时段都可填写",
-                      hint: "不固定时间，随时能填。实验一直挂着，直到你手动关闭",
-                    },
-                    {
-                      key: false,
-                      label: "设定截止时间",
-                      hint: "到点自动停止收集，已经提交的答卷不受影响",
-                    },
-                  ]
+                    { key: "ANYTIME", label: "一次性填完", hint: "只填一次，提交即完成" },
+                    { key: "WINDOW", label: "连续多天", hint: "每天填一次，用于重复测量 / 日记研究" },
+                    { key: "SCHEDULED", label: "固定场次", hint: "线上定时进行，被试报名参加（不限名额）" },
+                  ] as const
                 ).map((item) => (
                   <button
-                    key={String(item.key)}
+                    key={item.key}
                     type="button"
-                    onClick={() => setOpenAnytime(item.key)}
+                    onClick={() => setScheduleMode(item.key)}
                     className={cn(
                       "flex items-start gap-2 rounded-[10px] border px-3 py-2.5 text-left",
-                      openAnytime === item.key ? "border-moss bg-moss-tint" : "border-line bg-surface",
+                      scheduleMode === item.key ? "border-moss bg-moss-tint" : "border-line bg-surface",
                     )}
                   >
                     <span
                       className={cn(
                         "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
-                        openAnytime === item.key ? "border-moss bg-moss" : "border-line bg-surface",
+                        scheduleMode === item.key ? "border-moss bg-moss" : "border-line bg-surface",
                       )}
                     >
-                      {openAnytime === item.key ? (
+                      {scheduleMode === item.key ? (
                         <span className="h-1.5 w-1.5 rounded-full bg-white" />
                       ) : null}
                     </span>
@@ -567,7 +584,7 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                       <span
                         className={cn(
                           "block text-[13px] font-medium",
-                          openAnytime === item.key ? "text-moss" : "text-ink",
+                          scheduleMode === item.key ? "text-moss" : "text-ink",
                         )}
                       >
                         {item.label}
@@ -580,7 +597,58 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                 ))}
               </div>
 
-              {!openAnytime ? (
+              {scheduleMode === "ANYTIME" ? (
+                <div className="grid gap-2">
+                  {[
+                    {
+                      key: true,
+                      label: "全时段都可填写",
+                      hint: "不固定时间，随时能填。实验一直挂着，直到你手动关闭",
+                    },
+                    {
+                      key: false,
+                      label: "设定截止时间",
+                      hint: "到点自动停止收集，已经提交的答卷不受影响",
+                    },
+                  ].map((item) => (
+                    <button
+                      key={String(item.key)}
+                      type="button"
+                      onClick={() => setOpenAnytime(item.key)}
+                      className={cn(
+                        "flex items-start gap-2 rounded-[10px] border px-3 py-2.5 text-left",
+                        openAnytime === item.key ? "border-moss bg-moss-tint" : "border-line bg-surface",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                          openAnytime === item.key ? "border-moss bg-moss" : "border-line bg-surface",
+                        )}
+                      >
+                        {openAnytime === item.key ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                        ) : null}
+                      </span>
+                      <span className="min-w-0">
+                        <span
+                          className={cn(
+                            "block text-[13px] font-medium",
+                            openAnytime === item.key ? "text-moss" : "text-ink",
+                          )}
+                        >
+                          {item.label}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] leading-5 text-ink-soft">
+                          {item.hint}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {scheduleMode === "ANYTIME" && !openAnytime ? (
                 <div className="rounded-card border border-line bg-surface p-4">
                   <Field label="报名截止" hint="必须晚于现在">
                     <Input
@@ -592,11 +660,42 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
                 </div>
               ) : null}
 
+              {scheduleMode === "WINDOW" ? (
+                <div className="space-y-3 rounded-card border border-line bg-surface p-4">
+                  <Field label="第一天" hint="从这天开始，每天能填一次">
+                    <Input
+                      type="date"
+                      value={windowStart}
+                      onChange={(e) => setWindowStart(e.target.value)}
+                    />
+                  </Field>
+                  <Field label="连续多少天" hint="每天一次，1–60 天">
+                    <Input
+                      inputMode="numeric"
+                      value={repeatCount}
+                      onChange={(e) => setRepeatCount(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                    />
+                  </Field>
+                  <p className="text-[11px] leading-5 text-ink-soft">
+                    按上海时区的自然日算：23:50 填完，第二天 00:10 就能填下一次。
+                    题目可以每天不同 —— 做完问卷后在编辑器里按天改。
+                  </p>
+                </div>
+              ) : null}
+
+              {scheduleMode === "SCHEDULED" ? (
+                <p className="px-1 text-[11px] leading-5 text-ink-soft">
+                  场次在下面排。线上场次不限名额，报名的被试都会进名单。
+                </p>
+              ) : null}
+
               <p className="px-1 text-[11px] leading-5 text-ink-soft">
                 下一步会先存成草稿，然后进问卷编辑器。问卷发布后实验才会出现在被试的列表里。
               </p>
             </div>
-          ) : (
+          ) : null}
+
+          {showTimetable ? (
           <div className="space-y-2.5">
             <div>
               <h3 className="section-title mb-1.5">点格子排时段</h3>
@@ -661,7 +760,8 @@ function NewExperimentFormInner({ today, nowIso }: { today: string; nowIso: stri
               报名截止：<span className="num text-ink">{formatDateTimeCN(new Date(deadlineMs))}</span>
             </p>
           </div>
-          )
+          ) : null}
+          </>
         ) : null}
 
         {step === 3 ? (

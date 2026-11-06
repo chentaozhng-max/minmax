@@ -27,6 +27,7 @@ type Client = {
 type RawQuestion = {
   id: string;
   order: number;
+  round: number;
   type: string;
   title: string;
   required: boolean;
@@ -59,6 +60,7 @@ type RawResponse = {
   submittedAt: Date;
   invitedAt: Date | null;
   declinedAt: Date | null;
+  round: number;
   subject?: { name: string; school: string | null; studentId: string | null; studentVerified: boolean; creditScore: number };
 };
 
@@ -75,6 +77,7 @@ function toQuestion(row: RawQuestion): QuestionRecord {
   return {
     id: row.id,
     order: row.order,
+    round: row.round ?? 1,
     type: row.type,
     title: row.title,
     required: row.required,
@@ -116,6 +119,7 @@ function toResponse(row: RawResponse): ResponseRecord {
     submittedAt: row.submittedAt,
     invitedAt: row.invitedAt,
     declinedAt: row.declinedAt,
+    round: row.round,
   };
 }
 
@@ -124,7 +128,7 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
     async findByExperiment(experimentId) {
       const row = (await db.questionnaire.findUnique({
         where: { experimentId },
-        include: { questions: { orderBy: { order: "asc" } } },
+        include: { questions: { orderBy: [{ round: "asc" }, { order: "asc" }] } },
       })) as RawQuestionnaire | null;
       return row ? toQuestionnaire(row) : null;
     },
@@ -138,6 +142,7 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
           questions: {
             create: draft.questions.map((q, index) => ({
               order: index,
+              round: q.round ?? 1,
               type: q.type,
               title: q.title,
               required: q.required,
@@ -147,7 +152,7 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
             })),
           },
         },
-        include: { questions: { orderBy: { order: "asc" } } },
+        include: { questions: { orderBy: [{ round: "asc" }, { order: "asc" }] } },
       })) as RawQuestionnaire;
       return toQuestionnaire(row);
     },
@@ -166,6 +171,7 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
             questions: {
               create: input.questions.map((q, index) => ({
                 order: index,
+                round: q.round ?? 1,
                 type: q.type,
                 title: q.title,
                 required: q.required,
@@ -193,7 +199,7 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
     async listResponses(questionnaireId) {
       const rows = (await db.questionnaireResponse.findMany({
         where: { questionnaireId },
-        orderBy: [{ score: "desc" }, { submittedAt: "asc" }],
+        orderBy: [{ round: "asc" }, { score: "desc" }, { submittedAt: "asc" }],
         include: {
           subject: {
             select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
@@ -207,38 +213,62 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
       return db.questionnaireResponse.count({ where: { questionnaireId } });
     },
 
-    async findResponse(questionnaireId, subjectId) {
-      const row = (await db.questionnaireResponse.findUnique({
-        where: { questionnaireId_subjectId: { questionnaireId, subjectId } },
+    async findResponse(questionnaireId, subjectId, round) {
+      const include = {
+        subject: {
+          select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
+        },
+      };
+      // 不传 round 时取最近一轮 —— 「我填过没有」这类判断只关心最新状态
+      const row = (round === undefined
+        ? await db.questionnaireResponse.findFirst({
+            where: { questionnaireId, subjectId },
+            orderBy: { round: "desc" },
+            include,
+          })
+        : await db.questionnaireResponse.findUnique({
+            where: { questionnaireId_subjectId_round: { questionnaireId, subjectId, round } },
+            include,
+          })) as RawResponse | null;
+      return row ? toResponse(row) : null;
+    },
+
+    async listMyResponses(questionnaireId, subjectId) {
+      const rows = (await db.questionnaireResponse.findMany({
+        where: { questionnaireId, subjectId },
+        orderBy: { round: "asc" },
         include: {
           subject: {
             select: { name: true, school: true, studentId: true, studentVerified: true, creditScore: true },
           },
         },
-      })) as RawResponse | null;
-      return row ? toResponse(row) : null;
+      })) as RawResponse[];
+      return rows.map(toResponse);
     },
 
     async upsertResponse(input: UpsertResponseInput) {
       const row = (await db.questionnaireResponse.upsert({
         where: {
-          questionnaireId_subjectId: {
+          questionnaireId_subjectId_round: {
             questionnaireId: input.questionnaireId,
             subjectId: input.subjectId,
+            round: input.round,
           },
         },
         create: {
           questionnaireId: input.questionnaireId,
           subjectId: input.subjectId,
+          round: input.round,
           answers: JSON.stringify(input.answers),
           submittedAt: input.submittedAt,
         },
         update: {
           answers: JSON.stringify(input.answers),
           submittedAt: input.submittedAt,
-          // 重新提交等于换了答案，旧分数作废
+          // 重新提交等于换了答案，旧分数（含分项）整体作废
           score: null,
           scoreReason: null,
+          scoreBreakdown: null,
           passed: null,
           scoredAt: null,
           status: "SUBMITTED",
@@ -309,12 +339,17 @@ export function makeQuestionnaireRepository(db: Client): QuestionnaireRepository
       // 没建问卷就没有门槛 —— 不能因为主试没做问卷把所有人拦死
       if (!questionnaire) return true;
 
-      const response = (await db.questionnaireResponse.findUnique({
+      /**
+       * 只看第 1 轮（基线）。
+       *
+       * 长程重复测量里，入选与否是基线问卷定的事；后面几天的卷是数据，
+       * 不该因为某天心情差、答得松就把人踢出去。
+       */
+      const response = (await db.questionnaireResponse.findFirst({
         where: {
-          questionnaireId_subjectId: {
-            questionnaireId: questionnaire.id,
-            subjectId,
-          },
+          questionnaireId: questionnaire.id,
+          subjectId,
+          round: 1,
         },
         select: { passed: true, score: true },
       })) as { passed: boolean | null; score: number | null } | null;

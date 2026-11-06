@@ -72,6 +72,13 @@ model Experiment {
   mode         String @default("OFFLINE") // ExperimentMode
   /// 是否需要先填问卷。线上实验恒为 true；线下由主试勾选
   needsQuestionnaire Boolean @default(false)
+  /// 线上实验的时间形态：ANYTIME 随时可填 / WINDOW 连续 N 天每天一次 / SCHEDULED 固定场次
+  /// 线下实验恒为 SCHEDULED（按时段预约），这个字段只对线上有意义
+  scheduleMode String @default("ANYTIME")
+  /// WINDOW：第 1 天（上海时区自然日的 00:00）。ANYTIME / SCHEDULED 为 null
+  windowStart  DateTime?
+  /// WINDOW：连续多少天，每天一次。ANYTIME / SCHEDULED 恒为 1
+  repeatCount  Int @default(1)
   /// 线上实验选「全时段可填写」：不设截止时间。
   /// 库里的 signupDeadline 会写一个远期哨兵值（domain 的 OPEN_ANYTIME_DEADLINE），
   /// 这样所有「未截止」的过滤条件保持一种写法，页面按这个标记改文案即可
@@ -310,6 +317,8 @@ model Question {
   questionnaireId String
   /// 展示顺序，从 0 开始
   order           Int
+  /// 属于第几轮（长程重复测量用）。1 = 第 1 天；非重复测量的问卷恒为 1
+  round           Int     @default(1)
   /// SINGLE | MULTI | SCALE | TEXT
   type            String
   title           String
@@ -347,11 +356,13 @@ model QuestionnaireResponse {
   invitedAt       DateTime?
   /// 已把「本轮条件不匹配」告知被试的时间。与 invitedAt 对称，两者互斥
   declinedAt      DateTime?
+  /// 这是第几次填（长程重复测量）。一人一天最多一份，所以唯一键带上了它
+  round           Int      @default(1)
 
   questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id], onDelete: Cascade)
   subject       User          @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
-  @@unique([questionnaireId, subjectId])
+  @@unique([questionnaireId, subjectId, round])
   @@index([questionnaireId, score])
 }
 

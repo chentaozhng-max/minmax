@@ -26,15 +26,31 @@ export default async function QuestionnairePage({
   const experiment = await loadExperimentBrief(id);
   if (!experiment) notFound();
 
-  const { questionnaire, mine } = user
+  const { questionnaire, mine, round, repeatCount } = user
     ? await loadQuestionnaireForSubject(id, user.id)
-    : { questionnaire: null, mine: null };
+    : { questionnaire: null, mine: null, round: 1 as number | null, repeatCount: 1 };
+
+  // 连续多天：窗口外（还没开始 / 已经结束）不该让人填
+  const outsideWindow = round === null;
 
   return (
     <main className="shell">
       <PageHeader title="填写问卷" back={`/experiments/${id}`} profile={{ role: "SUBJECT" }} />
 
-      {!questionnaire || questionnaire.status !== "PUBLISHED" ? (
+      {outsideWindow ? (
+        <section className="px-4 py-10 text-center">
+          <p className="text-[14px] font-medium text-ink">现在还不能填写</p>
+          <p className="mt-2 text-[12px] leading-6 text-ink-soft">
+            这个实验要在规定的几天里每天填一次，现在不在填写时间内。
+          </p>
+          <Link
+            href={`/experiments/${id}`}
+            className="mt-6 inline-block rounded-full border border-line px-5 py-2 text-[13px] text-ink"
+          >
+            返回实验
+          </Link>
+        </section>
+      ) : !questionnaire || questionnaire.status !== "PUBLISHED" ? (
         <section className="px-4 py-10 text-center">
           <p className="text-[14px] font-medium text-ink">问卷还没准备好</p>
           <p className="mt-2 text-[12px] leading-6 text-ink-soft">
@@ -65,6 +81,8 @@ export default async function QuestionnairePage({
           }))}
           initialAnswers={mine?.answers ?? null}
           submittedAt={mine?.submittedAt ? mine.submittedAt.toISOString() : null}
+          round={repeatCount > 1 ? round : null}
+          repeatCount={repeatCount}
         />
       )}
     </main>

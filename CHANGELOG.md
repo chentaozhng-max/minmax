@@ -114,10 +114,25 @@
     `DirectThread.experimentId` 以前只在建线程那一刻写一次，于是收到「正念」的邀请、
     标注却还挂着「睡眠质量」。`notice-repo` 现在每次发消息都顺带更新它。
 
+15. **线上实验有了时间维度**：以前线上只有「随时可填」一种形态，长程重复测量和线上定时实验都做不了。
+    现在发布第 2 步三选一：
+    - **一次性填完**（原来的行为，可再选「全时段/截止时间」）
+    - **连续多天**：选第一天 + 连续几天（1–60），**每天限填一次**
+    - **固定场次**：复用线下那套课程表排场次，线上进行、不限名额
+
+    配套的三处：
+    - `Question.round` / `QuestionnaireResponse.round`：一轮一天，唯一键变成 `(questionnaireId, subjectId, round)`。
+      **某天没单独设题时自动沿用第 1 天的题**（`questionsForRound`）—— 主试不用把 7 天的题复制 7 遍。
+    - 轮次按**上海时区自然日**算（`domain/online-schedule.ts`），不是 24 小时滚动：
+      23:50 填完，第二天 00:10 就能填下一次。领域层不 import `@/lib/time`，自己平移取 UTC 字段。
+    - 提交接口自己再判一次「今天第几天 / 今天填过没」，不信前端 —— 接口是公开的。
+    - 被试端 CTA 变成：还没开始 / 填写第 K 天 / 今天填完了（明天再来）/ 本轮已结束。
+    - 答卷 CSV 多一列「第几次」；答卷列表给第 2 次及以后标「第 N 次」。
+
 ### 验证（本次实测）
 
-- `npm test` → **64 文件 / 762 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
-- `npm run lint:layers` → 235 文件通过
+- `npm test` → **65 文件 / 780 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm run lint:layers` → 236 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
 - 真浏览器复查（headless Edge，390×844）：线上实验的首页卡片、被试详情、主试详情、主试列表、答卷后台五处均无「时段 / 地点 / 报名 / 未到场」等线下措辞；导出接口返回 200 + BOM + 正确中文文件名

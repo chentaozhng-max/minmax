@@ -15,6 +15,8 @@ import type {
 export type QuestionRecord = {
   id: string;
   order: number;
+  /** 属于第几轮（长程重复测量）。非重复测量恒为 1 */
+  round: number;
   type: string;
   title: string;
   required: boolean;
@@ -55,6 +57,8 @@ export type ResponseRecord = {
   invitedAt: Date | null;
   /** 已告知「本轮不匹配」的时间；和 invitedAt 互斥 */
   declinedAt: Date | null;
+  /** 这是第几次填（长程重复测量）。非重复测量恒为 1 */
+  round: number;
 };
 
 export type SaveQuestionnaireInput = {
@@ -73,6 +77,8 @@ export type UpsertResponseInput = {
   subjectId: string;
   answers: AnswerMap;
   submittedAt: Date;
+  /** 第几轮。非重复测量恒为 1 */
+  round: number;
 };
 
 export type ScoreUpdate = {
@@ -108,8 +114,11 @@ export interface QuestionnaireRepository {
   /** 只数个数：编辑器顶部显示「已有 N 份答卷」，不需要把答卷本身读出来 */
   countResponses(questionnaireId: string): Promise<number>;
 
-  /** 被试端：我自己那份答卷 */
-  findResponse(questionnaireId: string, subjectId: string): Promise<ResponseRecord | null>;
+  /** 被试端：我自己某一份答卷。不传 round 时取最近一轮 */
+  findResponse(questionnaireId: string, subjectId: string, round?: number): Promise<ResponseRecord | null>;
+
+  /** 被试端：我在这个问卷里填过的全部轮次（按 round 升序），用来算「填了几天」 */
+  listMyResponses(questionnaireId: string, subjectId: string): Promise<ResponseRecord[]>;
 
   /** 提交/覆盖答卷。重复提交时把分数清空，等重新计分 */
   upsertResponse(input: UpsertResponseInput): Promise<ResponseRecord>;

@@ -30,6 +30,12 @@ export type PublishExperimentInput = {
   needsQuestionnaire: boolean;
   /** 线上实验：不设截止时间，signupDeadline 存的是远期哨兵值 */
   openAnytime: boolean;
+  /** 线上实验的时间形态；线下恒为 SCHEDULED */
+  scheduleMode: "ANYTIME" | "WINDOW" | "SCHEDULED";
+  /** WINDOW 的第 1 天；其它形态为 null */
+  windowStart: Date | null;
+  /** WINDOW 连续多少天；其它形态为 1 */
+  repeatCount: number;
   /** 一对一固定 null */
   groupSize: number | null;
   requirements: string | null;

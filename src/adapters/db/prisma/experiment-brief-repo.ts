@@ -15,6 +15,12 @@ export type ExperimentBrief = {
   signupDeadline: Date;
   mode: string;
   needsQuestionnaire: boolean;
+  /** 线上实验的时间形态：ANYTIME / WINDOW / SCHEDULED */
+  scheduleMode: string;
+  /** WINDOW 的第 1 天 */
+  windowStart: Date | null;
+  /** WINDOW 连续多少天 */
+  repeatCount: number;
   status: string;
   researcherId: string;
 };
@@ -27,6 +33,9 @@ const BRIEF_SELECT = {
   signupDeadline: true,
   mode: true,
   needsQuestionnaire: true,
+  scheduleMode: true,
+  windowStart: true,
+  repeatCount: true,
   status: true,
   researcherId: true,
 } as const;

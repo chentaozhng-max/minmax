@@ -78,6 +78,7 @@ export default async function ResponsesPage({
           breakdown: r.scoreBreakdown,
           passed: r.passed,
           passState: r.passState,
+          round: r.round,
           status: r.status,
           submittedAt: r.submittedAt.toISOString(),
           invitedAt: r.invitedAt ? r.invitedAt.toISOString() : null,

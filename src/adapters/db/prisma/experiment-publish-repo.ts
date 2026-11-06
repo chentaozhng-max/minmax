@@ -37,6 +37,9 @@ export function makeExperimentPublishRepository(
           mode: input.mode,
           needsQuestionnaire: input.needsQuestionnaire,
           openAnytime: input.openAnytime,
+          scheduleMode: input.scheduleMode,
+          windowStart: input.windowStart,
+          repeatCount: input.repeatCount,
           // 一对一实验不写 groupSize（列可为 null），团体实验写人数
           groupSize: input.type === "GROUP" ? input.groupSize : null,
           requirements: input.requirements,

@@ -10,6 +10,7 @@ import {
 function question(over: Partial<QuestionRecord> & { id: string; title: string }): QuestionRecord {
   return {
     order: 1,
+    round: 1,
     type: "SINGLE",
     required: true,
     options: [],

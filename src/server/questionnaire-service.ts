@@ -10,12 +10,14 @@ import {
   assertQuestionnaireReady,
   formatAnswer,
   passState,
+  questionsForRound,
   summarizeScores,
   type AnswerMap,
   type QuestionDraft,
 } from "@/domain/questionnaire";
 import { makeDefaultQuestionnaireRepository } from "@/adapters/db/prisma/questionnaire-repo";
 import { makeDefaultNoticeRepository } from "@/adapters/db/prisma/notice-repo";
+import { canSubmitRound, currentRound } from "@/domain/online-schedule";
 import { loadOwnedBrief, loadOwnedBriefOrNull, loadExperimentBrief } from "./experiment-state";
 import { submitQuestionnaire } from "@/application/submit-questionnaire";
 import { scoreResponses } from "@/application/score-questionnaire";
@@ -264,6 +266,33 @@ export async function listResponses(experimentId: string): Promise<{
   };
 }
 
+/**
+ * 这一次提交算第几轮。
+ *
+ * ANYTIME / SCHEDULED 恒为 1（只有一份卷）；WINDOW 按上海时区自然日算，
+ * 并挡住「今天已经填过」「还没到开始日」「窗口已结束」三种情况。
+ * 前端也会拦，但接口是公开的 —— 这里必须自己判一次。
+ */
+async function resolveSubmitRound(
+  experiment: { mode: string; scheduleMode: string; windowStart: Date | null; repeatCount: number },
+  questionnaireId: string,
+  subjectId: string,
+): Promise<number> {
+  if (experiment.mode !== "ONLINE" || experiment.scheduleMode !== "WINDOW") return 1;
+
+  const mine = await repo().listMyResponses(questionnaireId, subjectId);
+  const check = canSubmitRound({
+    windowStart: experiment.windowStart,
+    repeatCount: experiment.repeatCount,
+    now: new Date(),
+    submittedRounds: mine.map((r) => r.round),
+  });
+  if (!check.allowed || check.round === null) {
+    throw new ApiError(400, check.reason ?? "现在还不能填写");
+  }
+  return check.round;
+}
+
 export async function submitForSubject(input: {
   experimentId: string;
   subjectId: string;
@@ -274,19 +303,25 @@ export async function submitForSubject(input: {
   if (!experiment) throw new ApiError(404, "实验不存在");
   if (experiment.status !== "PUBLISHED") throw new ApiError(400, "实验已下线");
 
+  const questionnaire = await repo().findByExperiment(input.experimentId);
+  if (!questionnaire) throw new ApiError(404, "这门实验还没有问卷");
+
+  const round = await resolveSubmitRound(experiment, questionnaire.id, input.subjectId);
+
   const saved = await submitQuestionnaire(
     {
       experimentId: input.experimentId,
       subjectId: input.subjectId,
       answers: input.answers,
+      round,
     },
     { repo: repo() },
   );
 
-  const questionnaire = await repo().findByExperiment(input.experimentId);
-  if (!questionnaire) return { response: saved, score: null as number | null };
+  // 计分只看本轮题：长程研究第 3 天的卷不该拿第 1 天的必答题去凑「未作答」
+  const roundQuestions = questionsForRound(questionnaire.questions, round);
 
-  const rendered = questionnaire.questions.map((q) => ({
+  const rendered = roundQuestions.map((q) => ({
     title: q.title,
     answer: formatAnswer(q, saved.answers[q.id]),
   }));
@@ -297,7 +332,7 @@ export async function submitForSubject(input: {
       scoringRule: questionnaire.scoringRule,
       passScore: questionnaire.passScore,
     },
-    questions: questionnaire.questions,
+    questions: roundQuestions,
     answers: saved.answers,
     rendered,
   });
@@ -310,7 +345,7 @@ export async function submitForSubject(input: {
     scoredAt: result.score === null ? null : new Date(),
   });
 
-  return { response: saved, score: result.score, reason: result.reason };
+  return { response: saved, score: result.score, reason: result.reason, round };
 }
 
 export async function rescoreAll(experimentId: string) {
@@ -404,12 +439,37 @@ export async function hasPassedQuestionnaire(experimentId: string, subjectId: st
  */
 export async function getSubjectState(experimentId: string, subjectId: string | null) {
   const questionnaire = await repo().findByExperiment(experimentId);
+  const experiment = await loadExperimentBrief(experimentId);
+
+  const scheduleMode = experiment?.mode === "ONLINE" ? experiment.scheduleMode : "SCHEDULED";
+  const isWindow = scheduleMode === "WINDOW";
+
   if (!questionnaire) {
-    return { published: false, submitted: false, passed: false, declined: false, title: "" };
+    return {
+      published: false,
+      submitted: false,
+      passed: false,
+      declined: false,
+      invited: false,
+      title: "",
+      scheduleMode,
+      repeatCount: 1,
+      currentRound: null as number | null,
+      doneRounds: 0,
+      submittedToday: false,
+      windowStartsAt: null as Date | null,
+    };
   }
 
   const response = subjectId ? await repo().findResponse(questionnaire.id, subjectId) : null;
   const passed = subjectId ? await repo().hasPassed(experimentId, subjectId) : false;
+
+  const mine = subjectId && isWindow ? await repo().listMyResponses(questionnaire.id, subjectId) : [];
+  const round = isWindow
+    ? currentRound(experiment?.windowStart ?? null, experiment?.repeatCount ?? 1, new Date())
+    : null;
+  const doneRounds = mine.map((r) => r.round);
+
   return {
     published: questionnaire.status === "PUBLISHED",
     submitted: Boolean(response),
@@ -423,13 +483,48 @@ export async function getSubjectState(experimentId: string, subjectId: string | 
     /** 主试已经发过「通过」的邀请消息；界面上只有这时才告诉被试「入选」 */
     invited: Boolean(response?.invitedAt),
     title: questionnaire.title,
+    // 长程重复测量：今天第几天、总共几天、已经填了几天
+    scheduleMode,
+    repeatCount: isWindow ? (experiment?.repeatCount ?? 1) : 1,
+    currentRound: round,
+    doneRounds: doneRounds.length,
+    submittedToday: round !== null && doneRounds.includes(round),
+    windowStartsAt: isWindow ? (experiment?.windowStart ?? null) : null,
   };
 }
 
-/** 填写页要的：题目 + 我之前那份答卷（有则显示只读回放） */
+/**
+ * 填写页要的：本轮题目 + 我在本轮的答卷（有则只读回放）。
+ *
+ * 长程重复测量时**只给当前这一天的题** —— 把 7 天的题全渲染出来，
+ * 被试会以为要一次填完。
+ */
 export async function loadQuestionnaireForSubject(experimentId: string, subjectId: string) {
   const questionnaire = await repo().findByExperiment(experimentId);
-  if (!questionnaire) return { questionnaire: null, mine: null };
-  const mine = await repo().findResponse(questionnaire.id, subjectId);
-  return { questionnaire, mine };
+  if (!questionnaire) {
+    return { questionnaire: null, mine: null, round: 1 as number | null, repeatCount: 1, doneRounds: 0 };
+  }
+
+  const experiment = await loadExperimentBrief(experimentId);
+  const isWindow = experiment?.mode === "ONLINE" && experiment.scheduleMode === "WINDOW";
+
+  let round: number | null = 1;
+  let doneRounds = 0;
+  if (isWindow) {
+    const mineRows = await repo().listMyResponses(questionnaire.id, subjectId);
+    doneRounds = mineRows.length;
+    round = currentRound(experiment?.windowStart ?? null, experiment?.repeatCount ?? 1, new Date());
+  }
+
+  // 窗口外（round = null）不取题：页面会显示「现在不能填写」，别让人填一半被服务端拒
+  const roundQuestions = round === null ? [] : questionsForRound(questionnaire.questions, round);
+  const mine = round === null ? null : await repo().findResponse(questionnaire.id, subjectId, round);
+
+  return {
+    questionnaire: { ...questionnaire, questions: roundQuestions },
+    mine,
+    round,
+    repeatCount: isWindow ? (experiment?.repeatCount ?? 1) : 1,
+    doneRounds,
+  };
 }

@@ -45,6 +45,8 @@ export type QuestionDraft = {
   options: string[];
   scaleMin: number | null;
   scaleMax: number | null;
+  /** 属于第几轮（长程重复测量）。不填按第 1 轮处理 */
+  round?: number;
 };
 
 export type QuestionnaireDraft = {
@@ -447,6 +449,19 @@ export function summarizeScores(
     highest: values.length ? Math.max(...values) : null,
     lowest: values.length ? Math.min(...values) : null,
   };
+}
+
+/**
+ * 某一轮的题目。
+ *
+ * 主试只维护一份「通用题目」（round=1）时，其余各天沿用同一套 ——
+ * 长程日记研究绝大多数是这种情况，逼主试把第 2–7 天逐题复制一遍不合理。
+ * 只有主试**明确给某天单独设过题**（该轮有题）时才用自己的。
+ */
+export function questionsForRound<T extends { round: number }>(questions: T[], round: number): T[] {
+  const own = questions.filter((q) => q.round === round);
+  if (own.length > 0) return own;
+  return questions.filter((q) => q.round === 1);
 }
 
 /**

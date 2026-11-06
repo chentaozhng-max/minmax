@@ -69,32 +69,57 @@ export default async function ExperimentDetailPage({
     ? await getSubjectState(experiment.id, user?.id ?? null)
     : null;
 
+  const isWindow = qState?.scheduleMode === "WINDOW";
+  const todayRound = qState?.currentRound ?? null;
+
   const ctaOverride = qState
     ? !qState.published
       ? { label: "问卷准备中", disabled: true, reason: "主试还在编辑问卷，稍后再来" }
-      : !qState.submitted
-        ? { label: "先填写问卷", href: `/experiments/${experiment.id}/questionnaire` }
-        : // 主试已经发消息说「这轮不匹配」了，界面不能再让人傻等
-          qState.declined
-          ? {
-              label: "本轮未入选",
-              disabled: true,
-              reason: "主试已发消息说明。之后有合适的实验会再联系你。",
-            }
-          : !qState.passed
+      : // 主试已经发消息说「这轮不匹配」了，界面不能再让人傻等
+        qState.declined
+        ? {
+            label: "本轮未入选",
+            disabled: true,
+            reason: "主试已发消息说明。之后有合适的实验会再联系你。",
+          }
+        : isWindow
+          ? // 连续多天：每天只开一次，今天填完就等明天
+            todayRound === null
             ? {
-                label: "等待主试筛选",
+                label: qState.windowStartsAt && new Date(qState.windowStartsAt) > new Date()
+                  ? "还没开始"
+                  : "本轮已结束",
                 disabled: true,
-                reason:
-                  experiment.mode === "ONLINE"
-                    ? "有结果后主试会给你发消息"
-                    : "通过后主试会给你发消息，届时就能预约",
+                reason: qState.windowStartsAt
+                  ? `本轮从 ${formatDayCN(new Date(qState.windowStartsAt))} 起，连续 ${qState.repeatCount} 天`
+                  : "主试还没有设置填写窗口",
               }
-            : experiment.mode === "ONLINE"
-              ? qState.invited
-                ? { label: "已入选", disabled: true, reason: "主试会通过消息和你安排后续" }
-                : { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
-              : null
+            : qState.submittedToday
+              ? {
+                  label: "今天填完了",
+                  disabled: true,
+                  reason: `第 ${todayRound} 天已完成（共 ${qState.repeatCount} 天），明天再来`,
+                }
+              : {
+                  label: `填写第 ${todayRound} 天`,
+                  href: `/experiments/${experiment.id}/questionnaire`,
+                }
+          : !qState.submitted
+            ? { label: "先填写问卷", href: `/experiments/${experiment.id}/questionnaire` }
+            : !qState.passed
+              ? {
+                  label: "等待主试筛选",
+                  disabled: true,
+                  reason:
+                    experiment.mode === "ONLINE"
+                      ? "有结果后主试会给你发消息"
+                      : "通过后主试会给你发消息，届时就能预约",
+                }
+              : experiment.mode === "ONLINE"
+                ? qState.invited
+                  ? { label: "已入选", disabled: true, reason: "主试会通过消息和你安排后续" }
+                  : { label: "问卷已完成", disabled: true, reason: "线上实验提交问卷即完成" }
+                : null
     : null;
 
   const slotViews = openSlots.map((s) => ({

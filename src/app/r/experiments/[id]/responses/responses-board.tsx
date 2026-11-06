@@ -38,6 +38,8 @@ type Row = {
   breakdown: { item: string; points: number; max: number | null; note: string | null }[] | null;
   passed: boolean | null;
   passState: PassState;
+  /** 第几次填（长程重复测量）；非重复测量为 1 */
+  round: number;
   status: string;
   submittedAt: string;
   invitedAt: string | null;
@@ -406,6 +408,11 @@ export function ResponsesBoard({
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="truncate text-[13px] text-ink">{row.name}</span>
+                    {row.round > 1 ? (
+                      <span className="num shrink-0 rounded-full bg-mist px-1.5 text-[10px] text-ink-soft">
+                        第 {row.round} 次
+                      </span>
+                    ) : null}
                     {row.verified ? (
                       <span className="rounded-full bg-verify-tint px-1.5 text-[10px] text-verify">已认证</span>
                     ) : null}

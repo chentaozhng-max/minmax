@@ -263,7 +263,7 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
 | `experiment-state.ts` | 上下架：按库里的真实数据重跑领域校验（不信任表单） |
 | `llm.ts` | 兼容转发壳 |
 
-#### 问卷链路（v1.4）—— 改这块先读这 14 条
+#### 问卷链路（v1.4）—— 改这块先读这 15 条
 
 1. **发布实验分两种形态**：`Experiment.mode = ONLINE | OFFLINE`。线上实验 `slots` 允许为空，
    `assertExperimentDraft` / `reviewExperimentDraft` 里所有时段相关检查都被 `mode !== "ONLINE"` 跳过。
@@ -313,6 +313,14 @@ index.ts                   createToolRegistry() / createAssistantToolRegistry()
     `inviteQualified`）。
 14. **私信线程的 `experimentId` 跟随最新一条消息**：`notice-repo` 每次发消息都更新它。
     一对师生只有一条线程，不改的话列表里的「来自：XX 实验」会永远停在第一门实验。
+15. **线上实验的时间形态**（`Experiment.scheduleMode`）：`ANYTIME` 随时可填 / `WINDOW` 连续 N 天每天一次 / `SCHEDULED` 固定场次。
+    - 轮次按**上海时区自然日**算（`domain/online-schedule.ts`），**领域层不许 import `@/lib/time`**
+      （L1 红线），那里自己平移 8 小时取 UTC 字段。
+    - `Question.round` 决定「第几天显示哪些题」；这一轮没题时 `questionsForRound` 回退到 round=1，
+      **别改成「必须逐天复制题目」**，主试维护不了。
+    - 提交接口必须自己调 `canSubmitRound` 再判一次（前端拦不住直调）；
+      `hasPassed` 只看 **round=1** —— 后面几天的卷是数据，不该把人踢出去。
+    - 线上「固定场次」复用线下课程表，slots 照常建；「连续多天」不建 slots，靠 windowStart + repeatCount。
 
 
 ### src/lib/ — 基础设施 glue + 兼容转发壳
@@ -346,7 +354,7 @@ api/                      全部服务端校验与业务入口
 ### 其他
 
 ```
-tests/                    64 个 Vitest 文件 / 762 用例（纯逻辑 + 适配器 + 页面查询）
+tests/                    65 个 Vitest 文件 / 780 用例（纯逻辑 + 适配器 + 页面查询）
 scripts/                  next-run 包装、验收 accept、check-layers 护栏、截图 shoot
 components/               page-header / tab-bar / experiment-card / slot-grid / ui/
 ```
@@ -413,7 +421,7 @@ npm run accept            # 62 项数据库级验收（要 dev 库，会写真�
 `npm test` 的 `pretest` 已经挂了 `check-layers`，所以**不需要单独跑**；但改完纯类型/文档时
 想快速确认分层没塌，单独跑 `npm run lint:layers` 更快。
 
-**验收判据是输出**：`762 tests passed`／`✅ check-layers: 235 个文件通过（L1–L7）`／
+**验收判据是输出**：`780 tests passed`／`✅ check-layers: 236 个文件通过（L1–L7）`／
 `62 passed / 0 failed`。看到「没报错」不算，得看到这三个数。
 
 ### 5.2 L6 欠账是「棘轮」，不是「已清零」

@@ -7,13 +7,19 @@
  */
 
 import { ApiError } from "@/lib/http";
-import { validateAnswers } from "@/domain/questionnaire";
+import { questionsForRound, validateAnswers } from "@/domain/questionnaire";
 import type { QuestionnaireRepository } from "@/domain/ports/questionnaire";
 
 export type SubmitQuestionnaireInput = {
   experimentId: string;
   subjectId: string;
   answers: Record<string, string | string[] | number>;
+  /**
+   * 第几轮。非重复测量传 1。
+   * 由调用方算好再传进来 —— 算轮次要看实验的窗口配置，
+   * 而这里只认得问卷，不认得实验。
+   */
+  round: number;
   now?: Date;
 };
 
@@ -29,8 +35,15 @@ export async function submitQuestionnaire(
   if (!questionnaire) throw new ApiError(404, "这门实验还没有问卷");
   if (questionnaire.status !== "PUBLISHED") throw new ApiError(403, "问卷还没有发布");
 
+  // 只校验本轮的题：长程研究里第 3 天不该因为第 1 天的必答题没填而被拦。
+  // 这一轮没单独设题时沿用第 1 天的题（见 questionsForRound）。
+  const roundQuestions = questionsForRound(questionnaire.questions, input.round);
+  if (roundQuestions.length === 0) {
+    throw new ApiError(400, `第 ${input.round} 天还没有题目，请联系主试`);
+  }
+
   const rejection = validateAnswers(
-    questionnaire.questions.map((q) => ({
+    roundQuestions.map((q) => ({
       id: q.id,
       type: q.type,
       title: q.title,
@@ -48,5 +61,6 @@ export async function submitQuestionnaire(
     subjectId: input.subjectId,
     answers: input.answers,
     submittedAt: input.now ?? new Date(),
+    round: input.round,
   });
 }

@@ -29,6 +29,8 @@ export function QuestionnaireForm({
   questions,
   initialAnswers,
   submittedAt,
+  round,
+  repeatCount,
 }: {
   experimentId: string;
   experimentTitle: string;
@@ -38,6 +40,9 @@ export function QuestionnaireForm({
   questions: Question[];
   initialAnswers: Record<string, Answer> | null;
   submittedAt: string | null;
+  /** 长程重复测量的第几天；非重复测量的问卷为 null */
+  round: number | null;
+  repeatCount: number;
 }) {
   const [answers, setAnswers] = useState<Record<string, Answer>>(initialAnswers ?? {});
   const [editing, setEditing] = useState(!initialAnswers);
@@ -133,6 +138,11 @@ export function QuestionnaireForm({
       <div className="rounded-card border border-line bg-surface p-4">
         <h1 className="text-[16px] font-medium leading-6 text-ink">{title}</h1>
         <p className="mt-1 text-[11px] text-ink-soft">来自「{experimentTitle}」</p>
+        {round !== null ? (
+          <p className="num mt-1 inline-block rounded-pill bg-moss-tint px-2 py-0.5 text-[11px] text-moss">
+            第 {round} 天 / 共 {repeatCount} 天
+          </p>
+        ) : null}
         {intro ? <p className="mt-2 text-[12px] leading-6 text-ink-soft">{intro}</p> : null}
       </div>
 

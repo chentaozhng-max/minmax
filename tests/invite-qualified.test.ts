@@ -21,6 +21,7 @@ function response(over: Partial<ResponseRecord> & { id: string }): ResponseRecor
     submittedAt: new Date("2026-11-05T02:00:00.000Z"),
     invitedAt: null,
     declinedAt: null,
+    round: 1,
     ...over,
   };
 }

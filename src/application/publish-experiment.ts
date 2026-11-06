@@ -11,6 +11,7 @@
 
 import { ApiError } from "@/lib/http";
 import { ExperimentStatus } from "@/domain/constants";
+import { clampRepeatDays, windowClosesAt } from "@/domain/online-schedule";
 import {
   assertExperimentDraft,
   capacityForSlot,
@@ -39,6 +40,12 @@ export type PublishExperimentInput = {
   needsQuestionnaire?: boolean;
   /** 线上实验：全时段可填写，不设截止时间 */
   openAnytime?: boolean;
+  /** 线上实验的时间形态；不传按 ANYTIME。线下恒按 SCHEDULED 存 */
+  scheduleMode?: "ANYTIME" | "WINDOW" | "SCHEDULED";
+  /** WINDOW 的第 1 天（ISO 字符串，只取日期） */
+  windowStart?: string;
+  /** WINDOW 连续多少天 */
+  repeatCount?: number;
   groupSize?: number | null;
   requirements?: string | null;
   minCreditScore: number;
@@ -80,8 +87,28 @@ export async function publishExperiment(
 
   // 「全时段可填写」只对线上实验生效：线下实验不设截止时间，时段会一直挂着，
   // 主试自己也说不清哪天该关。线上没有时段，截止时间只是入口的开关。
-  const openAnytime = mode === "ONLINE" && Boolean(input.openAnytime);
-  const effectiveDeadline = openAnytime ? OPEN_ANYTIME_DEADLINE : deadline;
+  /**
+   * 线上实验的时间形态。线下不用这个字段（它有 slots，本身就是「固定场次」），
+   * 存成 SCHEDULED 只是为了读库时语义自洽。
+   */
+  const scheduleMode: "ANYTIME" | "WINDOW" | "SCHEDULED" =
+    mode === "ONLINE" ? (input.scheduleMode ?? "ANYTIME") : "SCHEDULED";
+  const repeatCount = scheduleMode === "WINDOW" ? clampRepeatDays(input.repeatCount ?? 1) : 1;
+  const windowStart =
+    scheduleMode === "WINDOW" && input.windowStart ? new Date(input.windowStart) : null;
+
+  if (scheduleMode === "WINDOW" && (!windowStart || Number.isNaN(windowStart.getTime()))) {
+    throw new ApiError(400, "连续多天的实验要选一个开始日期");
+  }
+
+  const openAnytime = mode === "ONLINE" && scheduleMode === "ANYTIME" && Boolean(input.openAnytime);
+  // WINDOW 的截止时间就是窗口结束那一刻：窗口过了不该再收卷
+  const effectiveDeadline =
+    scheduleMode === "WINDOW" && windowStart
+      ? windowClosesAt(windowStart, repeatCount)
+      : openAnytime
+        ? OPEN_ANYTIME_DEADLINE
+        : deadline;
   const groupSize = input.type === "GROUP" ? (input.groupSize ?? 2) : null;
 
   // 时段先按时间排序，让领域层拿到的顺序稳定（重叠判定自己也会再排一次）。
@@ -133,6 +160,9 @@ export async function publishExperiment(
     mode,
     needsQuestionnaire,
     openAnytime,
+    scheduleMode,
+    windowStart,
+    repeatCount,
     groupSize,
     requirements: input.requirements ?? null,
     minCreditScore: input.minCreditScore,
