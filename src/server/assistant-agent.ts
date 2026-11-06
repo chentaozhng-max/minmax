@@ -36,6 +36,10 @@ import {
 import { createAssistantToolRegistry } from "@/tools";
 import type { AssistantContext, AssistantSearchPayload } from "@/tools/assistant-context";
 import { getLlm, type LlmMessage } from "@/adapters/llm";
+import { createScopeClassifier } from "@/adapters/llm/scope-classifier";
+import { checkScope } from "@/application/scope-gate";
+import { getStrike, setStrike } from "@/application/scope-strike-store";
+import { createGuardState, deniedResult, guardToolCall, noteToolCall } from "@/tools/guard";
 
 const sessions = makeSessionStore(prisma as never);
 const experimentSearch = makeExperimentSearch(prisma as never);
@@ -147,6 +151,36 @@ export async function sendAssistantTurn(params: {
   }
 
   messages.push({ role: "user", content: params.text, createdAt: now.toISOString() });
+
+  // ── 范围闸 ────────────────────────────────────────────────
+  // 门厅是最容易被当通用聊天机器人的地方（没有实验上下文、什么都能问），
+  // 所以这里更要拦住跑题的话：不花主模型 token，也避免用户以为这里能解决任何问题。
+  const scope = await checkScope({
+    text: params.text,
+    classifier: createScopeClassifier(),
+    counter: getStrike(thread.id),
+  });
+  setStrike(thread.id, scope.counter);
+
+  if (scope.blocked) {
+    messages.push({
+      role: "assistant",
+      content: scope.reply ?? "我只负责心理学实验的报名和排期。",
+      createdAt: now.toISOString(),
+    });
+    await sessions.save(thread.id, {
+      messages,
+      summary: thread.summary,
+      messageCount: messages.length,
+    });
+    return {
+      messages,
+      sessionId: thread.id,
+      bookedCount: await countBooked(params.subjectId, now),
+      degraded: false,
+      notice: null,
+    };
+  }
 
   const ctx = makeAssistantContext(subject, now, await loadFacts(params.subjectId, now));
 
@@ -395,6 +429,7 @@ async function runToolLoop(
   // 会话里的消息是「说过的话」，事实是「现在的情况」，两者混在一起模型会
   // 把它当成用户刚说的内容，甚至照着复述。
   const systemPrompt = `${SYSTEM_PROMPT}\n\n${formatDurableFacts(ctx.facts)}`;
+  const guard = createGuardState();
 
   for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
     const reply = await getLlm().chat({
@@ -420,10 +455,24 @@ async function runToolLoop(
     history.push(record);
 
     for (const tc of reply.toolCalls) {
+      // 先过闸，再判工具在不在 —— 闸的判断依据是「模型的行为」，
+      // 与工具是否存在无关（未知工具同样值得记一笔，免得模型反复试）。
+      const verdict = guardToolCall({
+        name: tc.name,
+        args: tc.args,
+        risk: toolRegistry.riskOf(tc.name),
+        guard,
+      });
+
       // 门厅只有 search_experiments；别的工具明确拒绝而不是静默失败（静默会让模型反复重试）
-      const result = toolRegistry.has(tc.name)
-        ? await toolRegistry.exec(tc.name, tc.args, { ctx, sink: {}, now: ctx.now })
-        : { ok: false, error: `这里只能搜索实验，不能调用 ${tc.name}` };
+      const result = !verdict.allow
+        ? deniedResult(verdict)
+        : toolRegistry.has(tc.name)
+          ? await toolRegistry.exec(tc.name, tc.args, { ctx, sink: {}, now: ctx.now })
+          : { ok: false, error: `这里只能搜索实验，不能调用 ${tc.name}` };
+
+      noteToolCall({ name: tc.name, args: tc.args, guard });
+
       const stored = record.toolCalls?.find((x) => x.id === tc.id);
       if (stored) stored.result = result;
     }

@@ -26,6 +26,7 @@ export const searchExperimentsTool: AgentTool<
     "条件原样传中文（如 weekday: \"周三\"、timeOfDay: \"下午\"），不要自己换算日期。",
     "即使没有任何条件也要调用一次，用来拿当前的实验列表。",
   ].join(""),
+  risk: "read",
   schema: searchCriteriaSchema,
   async execute({ ctx }, args) {
     const payload = await ctx.search(args);

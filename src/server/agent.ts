@@ -27,6 +27,10 @@ import { bookSlot } from "@/server/appointments";
 import { getLlm, type LlmMessage } from "@/adapters/llm";
 import { createToolRegistry } from "@/tools";
 import type { AgentContext, ToolContext, ToolSink } from "@/tools";
+import { checkScope } from "@/application/scope-gate";
+import { createScopeClassifier } from "@/adapters/llm/scope-classifier";
+import { getStrike, setStrike } from "@/application/scope-strike-store";
+import { createGuardState, deniedResult, guardToolCall, noteToolCall } from "@/tools/guard";
 
 const MAX_TURNS = 12;
 const MAX_SLOTS_IN_PROMPT = 24;
@@ -396,6 +400,38 @@ export async function sendTurn(params: {
 
   push({ role: "user", content: params.text, createdAt: now.toISOString() });
 
+  // ── 范围闸 ────────────────────────────────────────────────
+  // 放在推进主模型之前：跑题的话根本不该花一次主模型调用。
+  // 规则层先判（零成本可复现），判不了才问分类器；分类器任何失败都放行。
+  const scope = await checkScope({
+    text: params.text,
+    classifier: createScopeClassifier(),
+    counter: getStrike(session.id),
+  });
+  setStrike(session.id, scope.counter);
+
+  if (scope.blocked) {
+    push({
+      role: "assistant",
+      content: scope.reply ?? "这个我帮不上忙，我们聊聊实验报名吧。",
+      createdAt: now.toISOString(),
+    });
+    await chatSessions.save(session.id, session.state, stringifyMessages(history));
+    // 拦在表单模式：用户可以直接无视对话去点下面的时段，不该因为说了句
+    // 不相关的话就失去预约能力
+    return {
+      mode: "form",
+      state: session.state,
+      experimentType: ctx.experiment.type,
+      messages: history,
+      suggestedSlots: collectSuggestedSlots(history, ctx.availableSlots),
+      availableSlots: ctx.availableSlots,
+      notice: null,
+      blocked: null,
+      appointmentId: null,
+    };
+  }
+
   const userTurns = history.filter((m) => m.role === "user").length;
   if (userTurns > MAX_TURNS) {
     push({
@@ -439,6 +475,8 @@ export async function sendTurn(params: {
 
   const sink: ToolSink = {};
   const system = buildSystemPrompt(ctx, parseVaguePreferred(params.text, now));
+  // 工具闸的状态：记录本轮已发生的调用，供重复检测与读写预算判断
+  const guard = createGuardState({ availableSlotIds: ctx.availableSlots.map((s) => s.id) });
 
   try {
     for (let step = 0; step < 5; step += 1) {
@@ -463,7 +501,25 @@ export async function sendTurn(params: {
       push(record);
 
       for (const tc of reply.toolCalls) {
-        const result = await toolRegistry.exec(tc.name, tc.args, toToolContext(ctx, sink));
+        // 闸在 exec 之前判：它挡的是模型的调用**行为**（刷接口、绕过用户下单），
+        // 这类问题跨工具发生，所以放在所有工具的共同入口前面。
+        const verdict = guardToolCall({
+          name: tc.name,
+          args: tc.args,
+          risk: toolRegistry.riskOf(tc.name),
+          guard,
+        });
+
+        let result;
+        if (!verdict.allow) {
+          // 被拦下也要记 —— 否则模型原样重试时永远被当成「第一次」
+          noteToolCall({ name: tc.name, args: tc.args, guard });
+          result = deniedResult(verdict);
+        } else {
+          result = await toolRegistry.exec(tc.name, tc.args, toToolContext(ctx, sink));
+          noteToolCall({ name: tc.name, args: tc.args, guard, booked: Boolean(sink.appointmentId) });
+        }
+
         const stored = record.toolCalls?.find((x) => x.id === tc.id);
         if (stored) stored.result = result;
       }

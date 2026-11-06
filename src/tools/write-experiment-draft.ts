@@ -72,6 +72,8 @@ export const writeExperimentDraftTool: AgentTool<typeof draftArgsSchema, DraftCo
     "把主试的一句话想法写成一份完整的实验发布草稿（标题、说明、地点、时长、报酬、要求、时段计划）。" +
     "信息不全时用合理默认值，并在 notes 里说明假设；绝对不能编造房间号和伦理批号。",
   schema: draftArgsSchema,
+  // draft：只产草稿不落库，主试仍要点「发布」才生效
+  risk: "draft",
   async execute({ ctx }, args) {
     const { draft, issues, notes } = normalizeExperimentDraft(args, {
       now: ctx.now,

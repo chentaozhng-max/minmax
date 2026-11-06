@@ -9,6 +9,7 @@ import type { AgentContext } from "@/tools/context";
 export const getAvailableSlotsTool: AgentTool<z.ZodObject<{}>, AgentContext> = {
   name: "get_available_slots",
   description: "读取该实验当前还有空位的时段（系统事实，不要自己编时间）",
+  risk: "read",
   schema: z.object({}),
   async execute({ ctx }) {
     // 每次现读一次，保证给模型的是最新余位（可能刚被别人抢走）

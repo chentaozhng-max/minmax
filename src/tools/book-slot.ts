@@ -12,6 +12,8 @@ import { ChatState } from "@/lib/domain";
 export const bookSlotTool: AgentTool<z.ZodObject<{ slotId: z.ZodString }>, AgentContext> = {
   name: "book_slot",
   description: "锁定时段并创建预约。只有被试明确选定某个时段后才调用",
+  // write：产出一张业务单据。闸会无条件拒绝它（下单只能由用户点组件）
+  risk: "write",
   schema: z.object({
     slotId: z.string().describe("被选中的时段 id"),
   }),

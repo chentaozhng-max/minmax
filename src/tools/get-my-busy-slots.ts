@@ -9,6 +9,7 @@ import { formatSlotRange } from "@/lib/time";
 export const getMyBusySlotsTool: AgentTool<z.ZodObject<{}>, AgentContext> = {
   name: "get_my_busy_slots",
   description: "读取当前被试已有的预约，用于避让时间冲突",
+  risk: "read",
   schema: z.object({}),
   async execute({ ctx }) {
     return {

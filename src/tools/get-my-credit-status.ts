@@ -8,6 +8,7 @@ import type { AgentContext } from "@/tools/context";
 export const getMyCreditStatusTool: AgentTool<z.ZodObject<{}>, AgentContext> = {
   name: "get_my_credit_status",
   description: "读取当前被试的信誉分与是否被禁报名",
+  risk: "read",
   schema: z.object({}),
   async execute({ ctx }) {
     return {

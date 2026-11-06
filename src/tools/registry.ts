@@ -12,6 +12,7 @@
  */
 import type { z } from "zod";
 import type { LlmToolSpec } from "@/domain/ports/llm";
+import type { ToolRisk } from "@/domain/tool-policy";
 
 /** 工具统一返回形状 */
 export type ToolResult = { ok: boolean } & Record<string, unknown>;
@@ -44,6 +45,13 @@ export interface AgentTool<S extends z.ZodTypeAny = z.ZodTypeAny, C = unknown> {
   name: string;
   description: string;
   schema: S;
+  /**
+   * 风险类别 —— 工具闸用它决定怎么拦。
+   *
+   * 不填时按 `read` 处理（最宽松的一种）。**写业务单据的工具必须填 `write`**，
+   * 否则「本轮已约成后不许再写」这条规则对它失效。
+   */
+  risk?: ToolRisk;
   execute(context: ToolContext<C>, args: z.infer<S>): Promise<ToolResult>;
 }
 
@@ -79,6 +87,16 @@ export class ToolRegistry<C = unknown> {
   /** 已注册的工具名（顺序 = 注册顺序，测试与调试用） */
   names(): string[] {
     return [...this.tools.keys()];
+  }
+
+  /**
+   * 取工具声明的风险类别（未注册返回 undefined）。
+   *
+   * 给工具闸用：闸在 `exec()` **之前**跑，此时还没有工具对象，
+   * 需要一个只查不执行的入口。
+   */
+  riskOf(name: string): ToolRisk | undefined {
+    return this.tools.get(name)?.risk;
   }
 
   /** 生成给模型的工具描述列表 */

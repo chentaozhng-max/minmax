@@ -16,6 +16,8 @@ export const proposeSlotsTool: AgentTool<
   name: "propose_slots",
   description:
     "向被试展示 2-3 个候选时段供其选择。展示后等待用户挑选，不要继续调用 book_slot",
+  // 不落库、只往会话里推卡片 —— 但没有它用户就看不到候选，所以不是纯读
+  risk: "side-effect",
   schema: z.object({
     slotIds: z
       .array(z.string())
