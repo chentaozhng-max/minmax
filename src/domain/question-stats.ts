@@ -109,3 +109,56 @@ export function summarizeAnswers(
     return { ...base, tallies };
   });
 }
+
+/* ─────────────────────────────────────────────
+ * 长程重复测量的完成情况
+ *
+ * 主试真正关心的不是「收了多少份卷」，而是「多少人真的坚持填完了」。
+ * 一个人填 7 天算 7 份，按份统计看不出流失。
+ * ───────────────────────────────────────────── */
+
+export type RepeatStat = {
+  /** 一共要求填几天 */
+  repeatCount: number;
+  /** 去重后的人数 */
+  participants: number;
+  /** 其中填满了 N 天的人数 */
+  completed: number;
+  /** 人均填了几天（保留 1 位） */
+  averageRounds: number;
+  /** 每一天收到了多少份 —— 用来看流失曲线 */
+  perRound: { round: number; count: number }[];
+};
+
+export function summarizeRepeats(
+  responses: { subjectId: string; round: number }[],
+  repeatCount: number,
+): RepeatStat {
+  const days = Math.max(1, Math.round(repeatCount));
+  const bySubject = new Map<string, Set<number>>();
+
+  for (const response of responses) {
+    const set = bySubject.get(response.subjectId) ?? new Set<number>();
+    set.add(response.round);
+    bySubject.set(response.subjectId, set);
+  }
+
+  const participants = bySubject.size;
+  let filled = 0;
+  for (const set of bySubject.values()) filled += set.size;
+
+  const perRound: { round: number; count: number }[] = [];
+  for (let round = 1; round <= days; round += 1) {
+    let count = 0;
+    for (const set of bySubject.values()) if (set.has(round)) count += 1;
+    perRound.push({ round, count });
+  }
+
+  return {
+    repeatCount: days,
+    participants,
+    completed: [...bySubject.values()].filter((set) => set.size >= days).length,
+    averageRounds: participants === 0 ? 0 : Math.round((filled / participants) * 10) / 10,
+    perRound,
+  };
+}

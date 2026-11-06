@@ -25,7 +25,7 @@ export default async function ResponsesPage({
   const experiment = user ? await loadOwnedBriefOrNull(id, user.id) : null;
   if (!experiment) notFound();
 
-  const { questionnaire, responses, summary } = await listResponses(id);
+  const { questionnaire, responses, summary, repeatStat } = await listResponses(id);
 
   if (!questionnaire) {
     return (
@@ -57,6 +57,7 @@ export default async function ResponsesPage({
           passScore: questionnaire.passScore,
         }}
         summary={summary}
+        repeatStat={repeatStat}
         questions={questionnaire.questions.map((q) => ({
           id: q.id,
           order: q.order,

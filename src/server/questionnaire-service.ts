@@ -18,6 +18,7 @@ import {
 import { makeDefaultQuestionnaireRepository } from "@/adapters/db/prisma/questionnaire-repo";
 import { makeDefaultNoticeRepository } from "@/adapters/db/prisma/notice-repo";
 import { canSubmitRound, currentRound } from "@/domain/online-schedule";
+import { summarizeRepeats } from "@/domain/question-stats";
 import { loadOwnedBrief, loadOwnedBriefOrNull, loadExperimentBrief } from "./experiment-state";
 import { submitQuestionnaire } from "@/application/submit-questionnaire";
 import { scoreResponses } from "@/application/score-questionnaire";
@@ -241,6 +242,8 @@ export async function listResponses(experimentId: string): Promise<{
   questionnaire: QuestionnaireRecord | null;
   responses: ResearcherResponseView[];
   summary: ReturnType<typeof summarizeScores>;
+  /** 长程重复测量的完成情况；一天的任务也返回，repeatCount 为 1 */
+  repeatStat: ReturnType<typeof summarizeRepeats>;
 }> {
   const questionnaire = await repo().findByExperiment(experimentId);
   if (!questionnaire) {
@@ -248,6 +251,7 @@ export async function listResponses(experimentId: string): Promise<{
       questionnaire: null,
       responses: [],
       summary: summarizeScores([], null),
+      repeatStat: summarizeRepeats([], 1),
     };
   }
   const rows = await repo().listResponses(questionnaire.id);
@@ -259,10 +263,13 @@ export async function listResponses(experimentId: string): Promise<{
       answer: formatAnswer(q, row.answers[q.id]),
     })),
   }));
+  const experiment = await loadExperimentBrief(experimentId);
   return {
     questionnaire,
     responses,
     summary: summarizeScores(responses, questionnaire.passScore),
+    // 「收了多少份」和「多少人坚持下来了」是两个数，长程实验要看后者
+    repeatStat: summarizeRepeats(responses, experiment?.repeatCount ?? 1),
   };
 }
 

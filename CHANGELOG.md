@@ -128,10 +128,15 @@
     - 提交接口自己再判一次「今天第几天 / 今天填过没」，不信前端 —— 接口是公开的。
     - 被试端 CTA 变成：还没开始 / 填写第 K 天 / 今天填完了（明天再来）/ 本轮已结束。
     - 答卷 CSV 多一列「第几次」；答卷列表给第 2 次及以后标「第 N 次」。
+16. **长程实验的「完成情况」**：答卷后台统计四宫格下面多一块，只在连续多天时出现。
+    显示「3 人参与，1 人填满 3 天（33%）」「人均 2 天」，下面每天一条横条 ——
+    第 1 天 3 人、第 2 天 2 人、第 3 天 1 人，流失一眼看得出来。
+    - 同时把四宫格的标签改成「答卷（份）」「达标（份）」，免得主试拿份数去和人数对不上。
+    - 落点：`domain/question-stats.ts` 的 `summarizeRepeats` + `tests/repeat-stats.test.ts` 6 例。
 
 ### 验证（本次实测）
 
-- `npm test` → **65 文件 / 780 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm test` → **66 文件 / 786 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/repeat-stats.test.ts` 6 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
 - `npm run lint:layers` → 236 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功

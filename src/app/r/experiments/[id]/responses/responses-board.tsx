@@ -53,6 +53,7 @@ export function ResponsesBoard({
   mode,
   questionnaire,
   summary,
+  repeatStat,
   questions,
   responses,
 }: {
@@ -61,6 +62,14 @@ export function ResponsesBoard({
   mode: "ONLINE" | "OFFLINE";
   questionnaire: { title: string; status: string; passScore: number | null };
   summary: Summary;
+  /** 长程重复测量的完成情况；repeatCount = 1 时不显示 */
+  repeatStat: {
+    repeatCount: number;
+    participants: number;
+    completed: number;
+    averageRounds: number;
+    perRound: { round: number; count: number }[];
+  };
   questions: StatQuestion[];
   responses: Row[];
 }) {
@@ -214,9 +223,17 @@ export function ResponsesBoard({
 
         <div className="mt-3 grid grid-cols-4 gap-2 text-center">
           {[
-            { label: "答卷", value: summary.total },
+            // 长程实验里「6 份」和「3 人」是两回事，标签上把单位写清楚，
+            // 免得主试拿四宫格的人数去和下面的完成情况对不上
+            {
+              label: repeatStat.repeatCount > 1 ? "答卷（份）" : "答卷",
+              value: summary.total,
+            },
             { label: "已评分", value: summary.scored },
-            { label: "达标", value: summary.passed },
+            {
+              label: repeatStat.repeatCount > 1 ? "达标（份）" : "达标",
+              value: summary.passed,
+            },
             { label: "均分", value: summary.average ?? "—" },
           ].map((item) => (
             <div key={item.label} className="rounded-[8px] bg-mist/60 py-2">
@@ -225,6 +242,51 @@ export function ResponsesBoard({
             </div>
           ))}
         </div>
+
+        {/* 长程重复测量：主试要看的是「多少人在第 5 天掉队了」，不是收了多少份 */}
+        {repeatStat.repeatCount > 1 ? (
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[11px] text-ink-soft">完成情况</p>
+              <p className="num text-[11px] text-ink-soft">人均 {repeatStat.averageRounds} 天</p>
+            </div>
+            <p className="mt-1 text-[12px] leading-5 text-ink">
+              <span className="num text-[15px] font-semibold">{repeatStat.participants}</span> 人参与，
+              <span className="num text-[15px] font-semibold text-moss">{repeatStat.completed}</span> 人填满{" "}
+              {repeatStat.repeatCount} 天
+              {repeatStat.participants > 0 ? (
+                <span className="num text-ink-soft">
+                  （{Math.round((repeatStat.completed / repeatStat.participants) * 100)}%）
+                </span>
+              ) : null}
+            </p>
+
+            <div className="mt-2 space-y-0.5">
+              {repeatStat.perRound.map((item) => {
+                const pct =
+                  repeatStat.participants === 0
+                    ? 0
+                    : Math.round((item.count / repeatStat.participants) * 100);
+                return (
+                  <div key={item.round} className="flex items-center gap-2">
+                    <span className="num w-[48px] shrink-0 text-[10px] text-ink-soft">
+                      第 {item.round} 天
+                    </span>
+                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-mist">
+                      <span
+                        className="block h-full rounded-full bg-moss"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </span>
+                    <span className="num w-[24px] shrink-0 text-right text-[10px] text-ink">
+                      {item.count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-3 rounded-card border border-line bg-surface p-4">
