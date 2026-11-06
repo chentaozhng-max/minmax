@@ -37,6 +37,7 @@ export class MockLlm implements LlmPort {
     messages: LlmMessage[];
     tools: LlmToolSpec[];
     temperature?: number;
+    maxTokens?: number;
   }): Promise<LlmReply> {
     if (this.opts.recorder) {
       this.opts.recorder.messages.push(params.messages);
