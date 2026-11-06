@@ -20,6 +20,13 @@ type Summary = {
   failed: number;
   unknown: number;
   average: number | null;
+  /** 论文口径：一位小数的均值 / 样本标准差 / 中位数 */
+  mean: number | null;
+  sd: number | null;
+  median: number | null;
+  highest: number | null;
+  lowest: number | null;
+  distribution: { label: string; from: number; to: number; count: number }[];
 };
 
 /** 和 QuestionStat 的三态对齐：通过 / 未通过 / 待定（未算分或没设分数线） */
@@ -295,6 +302,46 @@ export function ResponsesBoard({
             </div>
           ))}
         </div>
+
+        {/* 分数分布 + 描述统计：投稿要报 M ± SD，这里直接给，不用手算 */}
+        {summary.scored > 0 ? (
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[11px] text-ink-soft">分数分布</p>
+              <p className="num text-[11px] text-ink-soft">
+                M = {summary.mean ?? "—"} · SD = {summary.sd ?? "—"} · 中位数 {summary.median ?? "—"}
+              </p>
+            </div>
+
+            <div className="mt-2 space-y-0.5">
+              {[...summary.distribution].reverse().map((bucket) => {
+                // 按总人数归一，不按最高那一档：样本少的时候每档都只有一个人，
+                // 按 peak 归一会画成六条一样长的满格，看着像「每档很多人」
+                const pct = Math.round((bucket.count / Math.max(1, summary.scored)) * 100);
+                return (
+                  <div key={bucket.label} className="flex items-center gap-2">
+                    <span className="num w-[52px] shrink-0 text-[10px] text-ink-soft">
+                      {bucket.label}
+                    </span>
+                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-mist">
+                      <span
+                        className="block h-full rounded-full bg-moss"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </span>
+                    <span className="num w-[22px] shrink-0 text-right text-[10px] text-ink">
+                      {bucket.count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="num mt-1.5 text-[10px] text-ink-soft">
+              范围 {summary.lowest ?? "—"}–{summary.highest ?? "—"} · 共 {summary.scored} 份有分数
+            </p>
+          </div>
+        ) : null}
 
         {/* 长程重复测量：主试要看的是「多少人在第 5 天掉队了」，不是收了多少份 */}
         {repeatStat.repeatCount > 1 ? (

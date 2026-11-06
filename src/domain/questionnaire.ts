@@ -428,6 +428,15 @@ export function passState(score: number | null | undefined, passScore: number | 
   return score >= passScore ? "PASS" : "FAIL";
 }
 
+export type ScoreBucket = {
+  /** 显示用的区间标签，例：70–79 */
+  label: string;
+  from: number;
+  /** 含右端点，最后一段是 90–100 */
+  to: number;
+  count: number;
+};
+
 export type ResponseScoreSummary = {
   total: number;
   scored: number;
@@ -435,9 +444,20 @@ export type ResponseScoreSummary = {
   passed: number;
   failed: number;
   unknown: number;
+  /** 四宫格里显示用的整数均值 */
   average: number | null;
   highest: number | null;
   lowest: number | null;
+  /**
+   * 下面三个是给论文用的：均值保留一位小数、样本标准差、中位数。
+   * `average` 是整数，写进正文得手算，所以单独给一份。
+   */
+  mean: number | null;
+  /** 样本标准差（n−1）。只有一份答卷时没有「离散程度」可言，返回 null */
+  sd: number | null;
+  median: number | null;
+  /** 十个 10 分档的直方图，空档也要有（否则看不出分布形状） */
+  distribution: ScoreBucket[];
 };
 
 /** 后台顶部的统计条 —— 只统计有分数的，未打分的单独计数 */
@@ -459,7 +479,54 @@ export function summarizeScores(
     average: values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null,
     highest: values.length ? Math.max(...values) : null,
     lowest: values.length ? Math.min(...values) : null,
+    ...describeScores(values),
   };
+}
+
+/** 一位小数的均值 / 样本标准差 / 中位数，外加十个等宽分档 */
+function describeScores(values: number[]): {
+  mean: number | null;
+  sd: number | null;
+  median: number | null;
+  distribution: ScoreBucket[];
+} {
+  const distribution: ScoreBucket[] = Array.from({ length: 10 }, (_, i) => {
+    const from = i * 10;
+    // 最后一档吃到 100，前面的档位不含右端点（70 分算在 70–79 里）
+    const to = i === 9 ? 100 : from + 9;
+    return {
+      label: i === 9 ? "90–100" : `${from}–${to}`,
+      from,
+      to,
+      count: 0,
+    };
+  });
+
+  for (const value of values) {
+    const idx = value >= 100 ? 9 : Math.min(9, Math.floor(value / 10));
+    distribution[idx].count += 1;
+  }
+
+  if (values.length === 0) {
+    return { mean: null, sd: null, median: null, distribution };
+  }
+
+  const n = values.length;
+  const sum = values.reduce((a, b) => a + b, 0);
+  const mean = sum / n;
+
+  const round1 = (x: number) => Math.round(x * 10) / 10;
+  const sorted = [...values].sort((a, b) => a - b);
+  const median =
+    n % 2 === 1 ? sorted[(n - 1) / 2] : round1((sorted[n / 2 - 1] + sorted[n / 2]) / 2);
+
+  // 样本标准差：只给一个人算 SD 没有意义，返回 null 而不是 0
+  const sd =
+    n < 2
+      ? null
+      : round1(Math.sqrt(values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (n - 1)));
+
+  return { mean: round1(mean), sd, median, distribution };
 }
 
 /**

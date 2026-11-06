@@ -148,10 +148,16 @@
       以前是边导航边跳，走到「4 / 5」会突然关掉，用户以为漏了一步。
     - 「告知未通过」那块在没人未通过时不存在，所以这个页面会显示成 4 步而不是 5 步。
     - 只在有答卷时弹（空后台讲这些没意义）。
+20. **分数分布 + 描述统计**：答卷后台四宫格下面加了直方图和「M / SD / 中位数」。
+    - 投稿要报 `M ± SD`，以前只给一个整数均分，得自己反算；现在均值保留一位小数、标准差用**样本口径（n−1）**。
+    - 十个 10 分档的直方图，**空档也画出来**，否则看不出分布形状。条形按总人数归一 ——
+      按最高那一档归一会画成六条一样长的满格，样本少时看着像「每档很多人」。
+    - 只有一份答卷时不报 SD（返回 null）—— 一个人没有离散程度可言。
+    - 落点：`domain/questionnaire.ts` 的 `describeScores` + `tests/score-summary.test.ts` 10 例。
 
 ### 验证（本次实测）
 
-- `npm test` → **66 文件 / 786 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/repeat-stats.test.ts` 6 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
+- `npm test` → **67 文件 / 796 用例**（其中本次新增 `tests/questionnaire-domain.test.ts` 40 例、`tests/export-questionnaire.test.ts` 11 例、`tests/question-stats.test.ts` 9 例、`tests/notify-declined.test.ts` 16 例、`tests/score-breakdown.test.ts` 12 例、`tests/online-schedule.test.ts` 18 例、`tests/repeat-stats.test.ts` 6 例、`tests/score-summary.test.ts` 10 例、`tests/invite-qualified.test.ts` 8 例、`tests/notice-repo.test.ts` 3 例，`tests/book-slot.test.ts` 追加 3 例门槛用例，`tests/publish-experiment.test.ts` 追加 3 例「全时段可填」）
 - `npm run lint:layers` → 237 文件通过
 - `npx tsc --noEmit` 零错误；`npm run build` 通过
 - 端到端（真实 DeepSeek key）：建线上实验 → 出题（`mode=llm`）→ 发布 → 被试提交 → 计分 68 分 → 按 55 分邀请 → 库中 `status=INVITED` + 通知 + 私信三条全部落库；线下实验未填问卷预约被 403 拦住，提交后预约成功
