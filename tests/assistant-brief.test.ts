@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findOverlaps, isUpcoming, sortByStart } from "@/domain/assistant-brief";
+import { findOverlaps, isUpcoming, pickActiveOverlaps, sortByStart } from "@/domain/assistant-brief";
 
 const at = (h: number, m = 0) => new Date(`2026-11-05T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+08:00`);
 
@@ -78,5 +78,57 @@ describe("sortByStart", () => {
     const input = [item("b", 14, 15), item("a", 9, 10)];
     sortByStart(input);
     expect(input[0].id).toBe("b");
+  });
+});
+
+describe("pickActiveOverlaps — 「我的预约」页用的那个", () => {
+  const ACTIVE = ["PENDING_SUBJECT_CONFIRM", "AWAITING_RESEARCHER", "CONFIRMED", "CHECKED_IN"];
+  const now = at(12);
+  const row = (
+    id: string,
+    startH: number,
+    endH: number,
+    status = "CONFIRMED",
+  ) => ({ ...item(id, startH, endH), status });
+
+  it("两场活跃且重叠 → 报一对", () => {
+    const pairs = pickActiveOverlaps([row("a", 14, 16), row("b", 15, 17)], ACTIVE, now);
+    expect(pairs).toHaveLength(1);
+  });
+
+  it("★ 已取消的那场不算占用（否则会提醒一堆不存在的问题）", () => {
+    const pairs = pickActiveOverlaps(
+      [row("a", 14, 16), row("b", 15, 17, "CANCELLED_BY_SUBJECT")],
+      ACTIVE,
+      now,
+    );
+    expect(pairs).toEqual([]);
+  });
+
+  it("★ 已结束的不算（哪怕今天早些时候真的撞过）", () => {
+    const pairs = pickActiveOverlaps([row("a", 9, 11), row("b", 10, 11)], ACTIVE, now);
+    expect(pairs).toEqual([]);
+  });
+
+  it("未到场 / 已完成也不算", () => {
+    for (const status of ["NO_SHOW", "COMPLETED", "CANCELLED_BY_RESEARCHER"]) {
+      const pairs = pickActiveOverlaps(
+        [row("a", 14, 16), row("b", 15, 17, status)],
+        ACTIVE,
+        now,
+      );
+      expect(pairs, status).toEqual([]);
+    }
+  });
+
+  it("正在进行的算占用（还没去完）", () => {
+    const pairs = pickActiveOverlaps([row("a", 11, 14), row("b", 13, 15)], ACTIVE, now);
+    expect(pairs).toHaveLength(1);
+  });
+
+  it("结束时刻等于现在 → 不算（半开区间）", () => {
+    const pairs = pickActiveOverlaps([row("a", 10, 12), row("b", 11, 13)], ACTIVE, now);
+    // a 在 12:00 结束，now 也是 12:00 → a 被过滤掉，不构成撞车
+    expect(pairs).toEqual([]);
   });
 });

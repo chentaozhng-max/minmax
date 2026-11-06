@@ -21,6 +21,14 @@ type Tab = {
   href: string;
   label: string;
   icon: LucideIcon;
+  /**
+   * 这颗 tab 额外认领的路径。
+   *
+   * 「助手」tab 指向 `/assistant/chat`（门厅），但总览页 `/assistant` 是它的
+   * 子级页面（从门厅顶部摘要点进去）。不加这一条的话，进到总览页时底部
+   * 一个 tab 都不高亮 —— 用户会以为自己已经离开了「助手」这一栏。
+   */
+  also?: string[];
   /** 主试端中间那颗凸起的"发布" */
   primary?: boolean;
   /**
@@ -37,7 +45,7 @@ type Tab = {
 const SUBJECT_TABS: Tab[] = [
   { href: "/", label: "首页", icon: House },
   { href: "/appointments", label: "我的预约", icon: CalendarCheck },
-  { href: "/assistant", label: "助手", icon: Sparkles },
+  { href: "/assistant/chat", label: "助手", icon: Sparkles, also: ["/assistant"] },
   { href: "/messages", label: "消息", icon: MessageCircle },
   { href: "/me", label: "我的", icon: User, badge: true },
 ];
@@ -87,7 +95,11 @@ export function TabBar({ role }: { role: "SUBJECT" | "RESEARCHER" }) {
           const active =
             tab.href === "/"
               ? pathname === "/"
-              : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+              : pathname === tab.href ||
+                pathname.startsWith(`${tab.href}/`) ||
+                (tab.also ?? []).some(
+                  (p) => pathname === p || pathname.startsWith(`${p}/`),
+                );
 
           const busy = !active && pendingHref === tab.href;
 

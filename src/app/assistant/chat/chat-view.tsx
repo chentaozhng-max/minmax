@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ChevronDown, MapPin, Sparkles, Timer } from "lucide-react";
+import { ArrowUp, AlertTriangle, CalendarClock, ChevronDown, ChevronRight, MapPin, Sparkles, Timer } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/page-header";
+import { TabBar } from "@/components/tab-bar";
 import { RewardTag } from "@/components/reward-tag";
 import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
@@ -56,7 +58,14 @@ type SearchPayload = {
 
 const QUICK_WORDS = ["周三下午有空", "奖励高的", "一个小时以内"];
 
-export function AssistantChatView({ initial }: { initial: ChatResult }) {
+export function AssistantChatView({
+  initial,
+  scheduleSummary,
+}: {
+  initial: ChatResult;
+  /** 门厅顶部那条安排摘要。都为 0 时不显示 */
+  scheduleSummary: { headline: string; overlapCount: number; upcomingCount: number };
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -117,9 +126,45 @@ export function AssistantChatView({ initial }: { initial: ChatResult }) {
         subtitle={
           view.bookedCount > 0 ? `已约 ${view.bookedCount} 场，还想参加什么？` : "我帮你找合适的实验"
         }
-        back="/assistant"
         profile={{ role: "SUBJECT" }}
       />
+
+      {/* 我的安排摘要 —— 门厅是 tab 根页，不再有「上一页」，所以把原先
+          /assistant 总览页上「最该说的一句话」搬到这里，压成一条可点的横条。
+          没有任何安排时不显示：那时候标题里的引导语已经说清了，多一条反而是噪音。 */}
+      {scheduleSummary.upcomingCount > 0 || scheduleSummary.overlapCount > 0 ? (
+        <div className="px-4 pb-1 pt-2">
+          <Link href="/assistant" className="block">
+            <div
+              className={cn(
+                "flex items-center gap-2.5 rounded-card border px-3 py-2.5 active:opacity-80",
+                scheduleSummary.overlapCount > 0
+                  ? "border-warn/30 bg-warn/[0.06]"
+                  : "border-line bg-surface",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full",
+                  scheduleSummary.overlapCount > 0
+                    ? "bg-warn/15 text-warn"
+                    : "bg-moss-tint text-moss",
+                )}
+              >
+                {scheduleSummary.overlapCount > 0 ? (
+                  <AlertTriangle size={13} strokeWidth={2.3} />
+                ) : (
+                  <CalendarClock size={13} strokeWidth={2.2} />
+                )}
+              </span>
+              <p className="min-w-0 flex-1 truncate text-[12px] leading-5 text-ink">
+                {scheduleSummary.headline}
+              </p>
+              <ChevronRight size={14} className="shrink-0 text-ink-soft/60" strokeWidth={2.2} />
+            </div>
+          </Link>
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {view.messages.map((m, i) => (
@@ -159,7 +204,11 @@ export function AssistantChatView({ initial }: { initial: ChatResult }) {
         <div ref={bottomRef} className="h-2" />
       </div>
 
-      <div className="border-t border-line bg-surface px-3 py-2 pb-[calc(8px+env(safe-area-inset-bottom))]">
+      {/* 输入区。
+          门厅现在是 tab 根页，底部有 TabBar（fixed 定位、不占流内空间），
+          所以这里要自己让出 56px，否则输入框会被 TabBar 压住 ——
+          这个坑之前踩过一次（`fixed bottom-0 z-40` 盖住输入框）。 */}
+      <div className="border-t border-line bg-surface px-3 py-2 pb-[calc(8px+56px+env(safe-area-inset-bottom))]">
         <div className="flex items-end gap-2">
           <input
             value={draft}
@@ -182,6 +231,8 @@ export function AssistantChatView({ initial }: { initial: ChatResult }) {
           </button>
         </div>
       </div>
+
+      <TabBar role="SUBJECT" />
     </main>
   );
 }

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MapPin, ShieldAlert } from "lucide-react";
+import { AlertTriangle, MapPin, ShieldAlert } from "lucide-react";
 import { PageHeader, Modal } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
 import { Countdown } from "@/components/countdown";
@@ -12,7 +12,8 @@ import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/experiment-card";
 import { toast } from "@/components/toast";
 import { api, postJson } from "@/lib/api-client";
-import { appointmentStatusLabel, type AppointmentStatus } from "@/lib/domain";
+import { appointmentStatusLabel, ACTIVE_APPOINTMENT_STATUSES, type AppointmentStatus } from "@/lib/domain";
+import { pickActiveOverlaps } from "@/domain/assistant-brief";
 import { formatDayCN, formatHM } from "@/lib/time";
 import { rewardLabel } from "@/lib/reward";
 import { cn } from "@/lib/cn";
@@ -82,9 +83,65 @@ export function AppointmentsView() {
 
   const list = grouped[tab];
 
+  /**
+   * 时间撞车。规则在 `domain/assistant-brief.ts::pickActiveOverlaps`（纯函数、有单测），
+   * 这里只负责把接口数据翻成它要的形状。
+   */
+  const overlaps = useMemo(
+    () =>
+      pickActiveOverlaps(
+        items.map((a) => ({
+          id: a.id,
+          title: a.experiment.title,
+          startAt: new Date(a.slot.startAt),
+          endAt: new Date(a.slot.endAt),
+          status: a.status,
+        })),
+        ACTIVE_APPOINTMENT_STATUSES,
+        new Date(),
+      ),
+    [items],
+  );
+
   return (
     <main className="shell tabbar-space">
       <PageHeader title="我的预约" back="auto" profile={{ role: "SUBJECT" }} />
+
+      {/* 时间撞车提醒。
+          原先只在 /assistant 总览页有，而那个页面现在降级为门厅里的一张卡片，
+          所以这块搬到「我的预约」—— 撞车本来就是「我的预约」该管的事，
+          用户来这里看安排，顺手就看到哪里打架了。
+          放在 tab 栏上面（不是下面）：挂最上面会顶掉待确认的数量提示，
+          而「有几条等我去确认」是这一页更高优的事。 */}
+      {overlaps.length > 0 ? (
+        <div className="px-4 pt-3">
+          <div className="rounded-card border border-warn/30 bg-warn/[0.06] px-3.5 py-3">
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warn/15 text-warn">
+                <AlertTriangle size={13} strokeWidth={2.3} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] leading-5 text-ink">
+                  你有 {overlaps.length} 组时间撞车了
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {overlaps.slice(0, 3).map((o, i) => (
+                    <li
+                      key={`${o.first.id}-${o.second.id}-${i}`}
+                      className="truncate text-[11.5px] leading-4 text-ink-soft"
+                    >
+                      「{o.first.title}」和「{o.second.title}」
+                    </li>
+                  ))}
+                </ul>
+                {overlaps.length > 3 ? (
+                  <p className="mt-1 text-[11px] text-ink-soft">还有 {overlaps.length - 3} 组…</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="scroll-x sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">
         {TABS.map((t) => {

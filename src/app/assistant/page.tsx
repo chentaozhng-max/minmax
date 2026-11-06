@@ -10,15 +10,23 @@ import { ACTIVE_APPOINTMENT_STATUSES, appointmentStatusLabel, type AppointmentSt
 import { formatDayCN, formatHM } from "@/lib/time";
 
 /**
- * 助手首页 —— 这一步只「看」，不出手。
+ * 助手总览 —— 我的安排 / 撞车。
  *
- * 刻意不做的事：这里不能下单、不能改预约。原因有两个：
- *   1. 预约的最终动作应该是人点出来的（第 4 步做对话框内嵌组件）。在这里开一条
- *      「助手直接帮你约」的旁路，等于同时维护两套下单逻辑，迟早不一致。
- *   2. 先让「看」跑通零风险 —— 读错数据只是显示难看，写错数据要赔信誉分。
+ * ## 现在是二级页，不是 tab 落点
  *
- * 页面只做三件事：鉴权 → 调用例 → 渲染。撞车判定、排序、文案全在 application 层，
- * 这样规则有单测，页面坏了不影响规则对。
+ * 被试端「助手」tab 直接进 `/assistant/chat` 门厅（方案 A）。这一页改成从门厅
+ * 顶部那条摘要点进来，作用变成「进入对话之前先看一眼自己的安排」。
+ *
+ * 之前反过来的排法有个真问题：总览页通往门厅的按钮只在「没有任何安排」时渲染
+ * （理由是"有安排了先让他看安排，别抢视线"），结果**约过一场的人反而找不到
+ * 助手入口**，常驻的只剩页脚一行 11px 小字。现在 tab 直接就是对话，
+ * 入口问题消失；安排信息降级成一条可点的摘要，两件事都不丢。
+ *
+ * 撞车提醒在这一页保留（它是原始出处），同时在「我的预约」页也有一份 ——
+ * 后者才是用户查安排时会去的地方。两处调用同一个 domain 纯函数，
+ * 判定不会不一致。
+ *
+ * 刻意不做的事：这里不能下单、不能改预约。预约的最终动作应该是人点出来的。
  */
 export default async function AssistantPage() {
   const session = await requirePage("SUBJECT");
@@ -30,7 +38,12 @@ export default async function AssistantPage() {
 
   return (
     <main className="shell tabbar-space">
-      <PageHeader title="助手" subtitle="我帮你盯着你的安排" profile={{ role: "SUBJECT" }} />
+      <PageHeader
+        title="我的安排"
+        subtitle="助手帮你盯着的这些"
+        back="/assistant/chat"
+        profile={{ role: "SUBJECT" }}
+      />
 
       <div className="px-4 pt-3">
         {/* 那一句话 —— 撞车优先，其次最近一场，最后是引导 */}
@@ -45,16 +58,6 @@ export default async function AssistantPage() {
             </span>
             <p className="text-[13px] leading-6 text-ink">{brief.headline}</p>
           </div>
-          {/* 门厅入口：只在没有任何安排时给（有安排了先让他看安排，别抢视线） */}
-          {brief.upcoming.length === 0 && brief.overlaps.length === 0 ? (
-            <div className="mt-2.5">
-              <Link href="/assistant/chat" className="block">
-                <Button size="md" block>
-                  让助手帮我找实验
-                </Button>
-              </Link>
-            </div>
-          ) : null}
         </div>
 
         {brief.overlaps.length > 0 ? (
@@ -121,9 +124,9 @@ export default async function AssistantPage() {
         </section>
 
         <p className="mt-4 mb-4 px-1 text-center text-[11px] leading-5 text-ink-soft">
-          这里只帮你「看」安排。想找新实验，去
+          这里只帮你「看」安排。想找新实验，回
           <Link href="/assistant/chat" className="mx-0.5 text-moss underline">
-            和助手聊聊
+            助手对话
           </Link>
           。
         </p>

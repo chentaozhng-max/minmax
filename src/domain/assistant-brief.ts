@@ -59,6 +59,34 @@ export function isUpcoming(item: BusyInterval, now: Date): boolean {
   return item.endAt.getTime() > now.getTime();
 }
 
+/**
+ * 从一批「带状态的占用」里挑出真正会撞车的那些。
+ *
+ * ## 为什么要有这个函数，而不是在页面里写 filter
+ *
+ * 页面（我的预约）是 client component：数据由 react-query 拉、取消/确认后要立刻刷新，
+ * 所以不能在服务端算好传下去。但「什么算占用」是**业务规则**：
+ *   · 已取消 / 已爽约的不占用时间
+ *   · 已经结束的不占用时间
+ * 这套规则一旦写进组件里，就只能靠肉眼和真浏览器验证 —— 单测碰不到。
+ * 抽出来之后它是纯函数，规则错立刻红。
+ *
+ * 参数收「带 status 的扁平对象」而不是领域实体：这样 domain 层不用知道
+ * Appointment 长什么样（它只需要知道「有 id、标题、起止、状态」）。
+ */
+export function pickActiveOverlaps<T extends { id: string; title: string; startAt: Date; endAt: Date; status: string }>(
+  items: T[],
+  activeStatuses: readonly string[],
+  now: Date,
+): OverlapPair[] {
+  const active = items.filter(
+    (a) => activeStatuses.includes(a.status) && a.endAt.getTime() > now.getTime(),
+  );
+  return findOverlaps(
+    active.map((a) => ({ id: a.id, title: a.title, startAt: a.startAt, endAt: a.endAt })),
+  );
+}
+
 /** 按开始时间升序（助手要把「最近一场」放最前） */
 export function sortByStart<T extends { startAt: Date }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
