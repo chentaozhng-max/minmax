@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, AlertTriangle, CalendarClock, ChevronDown, ChevronRight, MapPin, Monitor, Sparkles, Timer } from "lucide-react";
+import { ArrowUp, AlertTriangle, CalendarClock, ChevronDown, ChevronRight, House, MapPin, Monitor, Sparkles, Timer } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -165,19 +165,42 @@ export function AssistantChatView({
           view.bookedCount > 0 ? `已约 ${view.bookedCount} 场，还想参加什么？` : "我帮你找合适的实验"
         }
         right={
-          // 一直可见，不看状态。原先那个通往门厅的入口只在「没有任何安排」时
-          // 渲染，结果约过一场的人反而找不到路 —— 同一个教训不能再犯一次。
-          // 已经在新对话里（fresh 且没说过话）就不显示：那时候点了也没事发生。
-          fresh && view.messages.length === 0 ? null : (
-            <button
-              type="button"
-              onClick={startFresh}
-              disabled={send.isPending}
-              className="press rounded-pill border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-soft active:bg-mist disabled:opacity-40"
+          <>
+            {/*
+              通往「我的安排」的常驻入口。
+              这里踩过两次同样的坑：入口只要带条件渲染，用户就会在另一种状态下
+              彻底找不到路（第一次是「有安排就不给入口」，第二次是把摘要条挂在
+              `upcomingCount > 0` 上 —— 没安排的人整个入口消失，有安排的人也因为
+              摘要条被折叠而看不到）。所以这颗图标**无条件渲染**，房子比文字更省
+              位置，右上角带一个数字表示有几场。
+            */}
+            <Link
+              href="/assistant"
+              aria-label="我的安排"
+              className="press relative rounded-pill border border-line bg-surface px-2 py-1 text-ink-soft active:bg-mist"
             >
-              新对话
-            </button>
-          )
+              <House size={15} strokeWidth={2} />
+              {scheduleSummary.upcomingCount > 0 ? (
+                <span
+                  className="num absolute -right-1 -top-1 flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-moss px-1 text-[9px] font-semibold leading-none text-white"
+                  aria-hidden
+                >
+                  {scheduleSummary.upcomingCount > 9 ? "9+" : scheduleSummary.upcomingCount}
+                </span>
+              ) : null}
+            </Link>
+            {/* 已经在新对话里（fresh 且没说过话）就不显示：那时候点了也没事发生。 */}
+            {fresh && view.messages.length === 0 ? null : (
+              <button
+                type="button"
+                onClick={startFresh}
+                disabled={send.isPending}
+                className="press rounded-pill border border-line bg-surface px-2.5 py-1 text-[12px] text-ink-soft active:bg-mist disabled:opacity-40"
+              >
+                新对话
+              </button>
+            )}
+          </>
         }
         profile={{ role: "SUBJECT" }}
       />
