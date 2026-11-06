@@ -11,6 +11,7 @@
  */
 
 import type { Rejection } from "@/domain/booking-rules";
+import { MAX_REPEAT_DAYS } from "@/domain/online-schedule";
 
 export const QuestionType = {
   SINGLE: "SINGLE",
@@ -112,7 +113,15 @@ export function normalizeQuestion(raw: unknown): QuestionDraft | null {
   if (type === QuestionType.SINGLE || type === QuestionType.MULTI) {
     // 选择题不足两个选项就没有意义，降级成填空而不是丢掉（主试还能改）
     if (options.length < 2) {
-      return { type: QuestionType.TEXT, title, required: input.required !== false, options: [], scaleMin: null, scaleMax: null };
+      return {
+        type: QuestionType.TEXT,
+        title,
+        required: input.required !== false,
+        options: [],
+        scaleMin: null,
+        scaleMax: null,
+        round: clampInt(input.round, 1, MAX_REPEAT_DAYS, 1),
+      };
     }
   }
 
@@ -125,6 +134,8 @@ export function normalizeQuestion(raw: unknown): QuestionDraft | null {
     title,
     required: input.required !== false,
     options: type === QuestionType.SINGLE || type === QuestionType.MULTI ? options : [],
+    // 长程重复测量：这道题属于第几天。AI 生成的不带这个字段，默认第 1 天
+    round: clampInt(input.round, 1, MAX_REPEAT_DAYS, 1),
     scaleMin,
     scaleMax: isScale && scaleMin !== null && scaleMax !== null && scaleMax <= scaleMin ? scaleMin + 4 : scaleMax,
   };

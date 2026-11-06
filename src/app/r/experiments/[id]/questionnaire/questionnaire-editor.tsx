@@ -14,6 +14,8 @@ type QuestionType = "SINGLE" | "MULTI" | "SCALE" | "TEXT";
 
 type EditableQuestion = {
   key: string;
+  /** 属于第几轮（长程重复测量）。非重复测量恒为 1 */
+  round: number;
   type: QuestionType;
   title: string;
   required: boolean;
@@ -29,6 +31,8 @@ type Initial = {
   scoringRule: string;
   passScore: number | null;
   questions: EditableQuestion[];
+  /** 连续多少天；1 表示不重复测量 */
+  repeatCount: number;
 };
 
 const TYPE_LABEL: Record<QuestionType, string> = {
@@ -54,6 +58,18 @@ export function QuestionnaireEditor({
   const [title, setTitle] = useState(initial.title);
   const [intro, setIntro] = useState(initial.intro);
   const [questions, setQuestions] = useState<EditableQuestion[]>(initial.questions);
+  const repeatCount = initial.repeatCount > 1 ? initial.repeatCount : 1;
+  /** 正在编辑第几天 */
+  const [activeRound, setActiveRound] = useState(1);
+
+  /** 这一轮自己有的题 */
+  const ownQuestions = questions.filter((q) => q.round === activeRound);
+  /** 第 1 天的题，用于「沿用」展示 */
+  const baseQuestions = questions.filter((q) => q.round === 1);
+  /** 这一天是不是在沿用第 1 天 */
+  const inheritsBase = activeRound > 1 && ownQuestions.length === 0;
+  /** 实际渲染的题（沿用时就渲染第 1 天的，但只读） */
+  const visible = inheritsBase ? baseQuestions : ownQuestions;
   const [scoringRule, setScoringRule] = useState(initial.scoringRule);
   const [passScore, setPassScore] = useState(initial.passScore === null ? "" : String(initial.passScore));
   const [status, setStatus] = useState(initial.status);
@@ -66,20 +82,43 @@ export function QuestionnaireEditor({
   const fileRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  function update(index: number, patch: Partial<EditableQuestion>) {
-    setQuestions((prev) => prev.map((q, i) => (i === index ? { ...q, ...patch } : q)));
+  function update(key: string, patch: Partial<EditableQuestion>) {
+    setQuestions((prev) => prev.map((q) => (q.key === key ? { ...q, ...patch } : q)));
   }
 
-  function remove(index: number) {
-    setQuestions((prev) => prev.filter((_, i) => i !== index));
+  function remove(key: string) {
+    setQuestions((prev) => prev.filter((q) => q.key !== key));
   }
 
-  function move(index: number, delta: number) {
+  /**
+   * 给这一天单独设题：把第 1 天的题复制一份，改成当前轮。
+   *
+   * 不做「必须逐天维护」—— 大多数长程研究每天同一套题，
+   * 只有真的需要改的那天复制出来改就行；想改回沿用，删光这一天的题即可。
+   */
+  function forkFromBase() {
+    setQuestions((prev) => [
+      ...prev,
+      ...prev
+        .filter((q) => q.round === 1)
+        .map((q) => ({ ...q, key: keyOf(), round: activeRound })),
+    ]);
+  }
+
+  function move(key: string, delta: number) {
     setQuestions((prev) => {
+      const current = prev.find((q) => q.key === key);
+      if (!current) return prev;
+      // 只在同一轮内换位，跨轮交换会让「第 3 天」的题跑到「第 1 天」前面
+      const siblings = prev.filter((q) => q.round === current.round);
+      const at = siblings.indexOf(current);
+      const target = siblings[at + delta];
+      if (!target) return prev;
+
       const next = [...prev];
-      const target = index + delta;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
+      const i = next.indexOf(current);
+      const j = next.indexOf(target);
+      [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
   }
@@ -89,6 +128,7 @@ export function QuestionnaireEditor({
       ...prev,
       {
         key: keyOf(),
+        round: activeRound,
         type: "SINGLE",
         title: "",
         required: true,
@@ -111,21 +151,22 @@ export function QuestionnaireEditor({
       if (brief.trim()) form.append("brief", brief.trim());
 
       const data = await postForm<{
-        draft: { title: string; intro: string; questions: Omit<EditableQuestion, "key">[] };
+        draft: { title: string; intro: string; questions: Omit<EditableQuestion, "key" | "round">[] };
         notice: string | null;
         mode: string;
         chars: number;
       }>(`/api/r/experiments/${experiment.id}/questionnaire/import`, form);
 
       const draft = data.draft;
-      setQuestions(
-        draft.questions.map((q) => ({
-          ...q,
-          key: keyOf(),
-          scaleMin: q.scaleMin ?? 1,
-          scaleMax: q.scaleMax ?? 5,
-        })),
-      );
+      // 只替换当前这一天的题：在「第 2 天」点生成，不该把第 1 天的题冲掉
+      const generated = draft.questions.map((q) => ({
+        ...q,
+        key: keyOf(),
+        round: activeRound,
+        scaleMin: q.scaleMin ?? 1,
+        scaleMax: q.scaleMax ?? 5,
+      }));
+      setQuestions((prev) => [...prev.filter((q) => q.round !== activeRound), ...generated]);
       if (draft.title) setTitle(draft.title);
       setIntro(draft.intro || intro);
       setNotice(
@@ -155,6 +196,7 @@ export function QuestionnaireEditor({
         title: title.trim(),
         intro: intro.trim(),
         questions: questions.map((q) => ({
+          round: q.round,
           type: q.type,
           title: q.title.trim(),
           required: q.required,
@@ -213,7 +255,7 @@ export function QuestionnaireEditor({
     }
   }
 
-  const totalPoints = questions.length;
+  const totalPoints = visible.length;
 
   return (
     <section className="px-4 pb-8 pt-3">
@@ -269,9 +311,51 @@ export function QuestionnaireEditor({
       </div>
 
       <div className="mt-4 space-y-3">
+        {repeatCount > 1 ? (
+          <div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              {Array.from({ length: repeatCount }, (_, i) => i + 1).map((day) => {
+                const hasOwn = questions.some((q) => q.round === day);
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setActiveRound(day)}
+                    className={cn(
+                      "num shrink-0 rounded-pill px-2.5 py-1 text-[11px]",
+                      activeRound === day
+                        ? "bg-moss text-white"
+                        : "border border-line bg-surface text-ink-soft",
+                    )}
+                  >
+                    第 {day} 天
+                    {day > 1 && !hasOwn ? <span className="ml-1 opacity-70">沿用</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+            {inheritsBase ? (
+              <div className="mt-2 rounded-[8px] border border-line bg-mist/50 px-3 py-2">
+                <p className="text-[11px] leading-5 text-ink-soft">
+                  第 {activeRound} 天沿用第 1 天的题。想给这一天加题或改问法，点下面复制一份再改；
+                  复制后想改回沿用，把这一天的题删光就行。
+                </p>
+                <button
+                  type="button"
+                  onClick={forkFromBase}
+                  className="mt-1 text-[12px] font-medium text-moss"
+                >
+                  为第 {activeRound} 天单独设题
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex items-center justify-between">
           <h2 className="text-[14px] font-medium text-ink">
-            题目 <span className="num text-ink-soft">{totalPoints}</span>
+            {repeatCount > 1 ? `第 ${activeRound} 天的题目` : "题目"}{" "}
+            <span className="num text-ink-soft">{totalPoints}</span>
           </h2>
           <button
             type="button"
@@ -282,19 +366,26 @@ export function QuestionnaireEditor({
           </button>
         </div>
 
-        {questions.length === 0 ? (
+        {visible.length === 0 ? (
           <p className="rounded-card border border-dashed border-line px-4 py-8 text-center text-[12px] text-ink-soft">
             还没有题目。上传材料让 AI 填写，或点「加一题」手动写。
           </p>
         ) : null}
 
-        {questions.map((q, index) => (
-          <div key={q.key} className="rounded-card border border-line bg-surface p-3.5">
+        {visible.map((q, index) => (
+          <div
+            key={q.key}
+            className={cn(
+              "rounded-card border border-line bg-surface p-3.5",
+              // 沿用态只是给主试看一眼，不能改 —— 改了会以为改的是第 1 天
+              inheritsBase && "pointer-events-none opacity-60",
+            )}
+          >
             <div className="flex items-center gap-2">
               <span className="num text-[12px] text-ink-soft">{index + 1}</span>
               <select
                 value={q.type}
-                onChange={(e) => update(index, { type: e.target.value as QuestionType })}
+                onChange={(e) => update(q.key, { type: e.target.value as QuestionType })}
                 className="h-8 rounded-[6px] border border-line bg-surface px-2 text-[12px] text-ink"
               >
                 {(Object.keys(TYPE_LABEL) as QuestionType[]).map((t) => (
@@ -307,18 +398,18 @@ export function QuestionnaireEditor({
                 <input
                   type="checkbox"
                   checked={q.required}
-                  onChange={(e) => update(index, { required: e.target.checked })}
+                  onChange={(e) => update(q.key, { required: e.target.checked })}
                   className="h-4 w-4 accent-[#2e5e4e]"
                 />
                 必答
               </label>
-              <button type="button" onClick={() => move(index, -1)} className="p-1 text-ink-soft" aria-label="上移">
+              <button type="button" onClick={() => move(q.key, -1)} className="p-1 text-ink-soft" aria-label="上移">
                 <ArrowUp size={14} />
               </button>
-              <button type="button" onClick={() => move(index, 1)} className="p-1 text-ink-soft" aria-label="下移">
+              <button type="button" onClick={() => move(q.key, 1)} className="p-1 text-ink-soft" aria-label="下移">
                 <ArrowDown size={14} />
               </button>
-              <button type="button" onClick={() => remove(index)} className="p-1 text-danger" aria-label="删除">
+              <button type="button" onClick={() => remove(q.key)} className="p-1 text-danger" aria-label="删除">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -326,7 +417,7 @@ export function QuestionnaireEditor({
             <Input
               className="mt-2"
               value={q.title}
-              onChange={(e) => update(index, { title: e.target.value })}
+              onChange={(e) => update(q.key, { title: e.target.value })}
               placeholder="题干，例：过去三个月你参加过同类实验吗？"
               maxLength={200}
             />
@@ -339,7 +430,7 @@ export function QuestionnaireEditor({
                     <Input
                       value={option}
                       onChange={(e) =>
-                        update(index, {
+                        update(q.key, {
                           options: q.options.map((o, i) => (i === oi ? e.target.value : o)),
                         })
                       }
@@ -348,7 +439,7 @@ export function QuestionnaireEditor({
                     />
                     <button
                       type="button"
-                      onClick={() => update(index, { options: q.options.filter((_, i) => i !== oi) })}
+                      onClick={() => update(q.key, { options: q.options.filter((_, i) => i !== oi) })}
                       className="p-1 text-ink-soft"
                       aria-label="删除选项"
                     >
@@ -358,7 +449,7 @@ export function QuestionnaireEditor({
                 ))}
                 <button
                   type="button"
-                  onClick={() => update(index, { options: [...q.options, ""] })}
+                  onClick={() => update(q.key, { options: [...q.options, ""] })}
                   className="text-[11px] font-medium text-moss"
                 >
                   + 加选项
@@ -373,14 +464,14 @@ export function QuestionnaireEditor({
                   className="w-14"
                   inputMode="numeric"
                   value={String(q.scaleMin)}
-                  onChange={(e) => update(index, { scaleMin: Number(e.target.value.replace(/\D/g, "")) || 1 })}
+                  onChange={(e) => update(q.key, { scaleMin: Number(e.target.value.replace(/\D/g, "")) || 1 })}
                 />
                 <span className="text-[11px] text-ink-soft">到</span>
                 <Input
                   className="w-14"
                   inputMode="numeric"
                   value={String(q.scaleMax)}
-                  onChange={(e) => update(index, { scaleMax: Number(e.target.value.replace(/\D/g, "")) || 5 })}
+                  onChange={(e) => update(q.key, { scaleMax: Number(e.target.value.replace(/\D/g, "")) || 5 })}
                 />
                 <span className="text-[11px] text-ink-soft">分</span>
               </div>

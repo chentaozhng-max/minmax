@@ -136,6 +136,8 @@ export const publishDraftRequestSchema = z.object({
 /* ── 问卷 ───────────────────────────────────── */
 
 const questionInputSchema = z.object({
+  /** 属于第几天（长程重复测量）；不传按第 1 天 */
+  round: z.number().int().min(1).max(60).optional(),
   type: z.enum(["SINGLE", "MULTI", "SCALE", "TEXT"]),
   title: z.string().trim().min(1, "题干不能为空").max(200),
   required: z.boolean().optional(),
@@ -147,7 +149,7 @@ const questionInputSchema = z.object({
 export const saveQuestionnaireSchema = z.object({
   title: z.string().trim().min(1, "问卷需要一个标题").max(120),
   intro: z.string().max(1000).optional(),
-  questions: z.array(questionInputSchema).max(40),
+  questions: z.array(questionInputSchema).max(400),
   scoringRule: z.string().max(2000).nullable().optional(),
   passScore: z.number().int().min(0).max(100).nullable().optional(),
   sourceText: z.string().max(200_000).nullable().optional(),

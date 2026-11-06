@@ -42,8 +42,10 @@ export default async function QuestionnaireEditorPage({
           status: questionnaire.status,
           scoringRule: questionnaire.scoringRule ?? "",
           passScore: questionnaire.passScore,
+          repeatCount: experiment.mode === "ONLINE" ? experiment.repeatCount : 1,
           questions: questionnaire.questions.map((q) => ({
             key: q.id,
+            round: q.round,
             type: q.type as "SINGLE" | "MULTI" | "SCALE" | "TEXT",
             title: q.title,
             required: q.required,
