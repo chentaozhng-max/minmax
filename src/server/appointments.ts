@@ -4,6 +4,7 @@ import { CREDIT, isFreeSubjectCancel, shouldPenalizeResearcherCancel } from "@/l
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   AppointmentStatus,
+  CHECKIN_OPENS_BEFORE_MS,
   ChatState,
   ExperimentStatus,
   type AppointmentStatus as Status,
@@ -113,7 +114,7 @@ export async function checkIn(id: string, userId: string, now = new Date()) {
   }
 
   const target = appointment.slot;
-  if (now.getTime() < target.startAt.getTime() - 30 * 60 * 1000) {
+  if (now.getTime() < target.startAt.getTime() - CHECKIN_OPENS_BEFORE_MS) {
     throw new ApiError(400, "还没到签到时间，实验开始前 30 分钟内可签到");
   }
   if (now.getTime() > target.endAt.getTime()) throw new ApiError(400, "该时段已结束");

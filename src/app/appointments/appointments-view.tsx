@@ -29,9 +29,15 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
+/**
+ * 落到哪个 tab —— 直接用服务端算好的 `group`，前端不再自己判一遍。
+ *
+ * 以前这里有一份「CHECKED_IN → checkin」的本地规则，和服务端的
+ * `appointmentGroupOf` 各写一套：改服务端没用，页面照旧把已签到的
+ * 塞进「待签到」，角标一直是 1（用户以为漏签了）。
+ * 签到窗口（开始前 30 分钟）也跟着搬到了 `domain/constants.ts` 里，只有一份。
+ */
 function tabOf(item: AppointmentItem): TabKey {
-  if (item.status === "CHECKED_IN") return "checkin";
-  if (item.status === "CONFIRMED") return item.canCheckIn ? "checkin" : "confirmed";
   return item.group;
 }
 

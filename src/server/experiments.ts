@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/http";
 import { checkEligibility, CREDIT } from "@/lib/credit";
 import {
   ACTIVE_APPOINTMENT_STATUSES,
+  CHECKIN_OPENS_BEFORE_MS,
   OCCUPYING_STATUSES,
   AppointmentStatus,
   ExperimentStatus,
@@ -305,15 +306,33 @@ export async function listResearcherExperiments(researcherId: string) {
 }
 
 /** 被试"我的预约"分组 */
-export function appointmentGroupOf(status: Status): "pending" | "confirmed" | "checkin" | "done" | "cancelled" {
+/**
+ * 预约落在「我的预约」的哪个分组里。
+ *
+ * 两个容易搞错的地方：
+ * 1. `checkin`（待签到）只放**现在真的能签**的，不是所有 CONFIRMED ——
+ *    实验在明天也算"待签到"的话，那个分组永远是满的。
+ * 2. `CHECKED_IN`（已签到、等主试确认）归到 `confirmed`，不要留在 `checkin` ——
+ *    签完了还挂在「待签到」里，角标一直显示 1，用户会以为自己漏签了一个。
+ */
+export function appointmentGroupOf(
+  status: Status,
+  slot?: { startAt: Date; endAt: Date } | null,
+  now: Date = new Date(),
+): "pending" | "confirmed" | "checkin" | "done" | "cancelled" {
   switch (status) {
     case AppointmentStatus.PENDING_SUBJECT_CONFIRM:
     case AppointmentStatus.AWAITING_RESEARCHER:
       return "pending";
-    case AppointmentStatus.CONFIRMED:
-      return "confirmed";
+    case AppointmentStatus.CONFIRMED: {
+      if (!slot) return "confirmed";
+      const t = now.getTime();
+      const open =
+        t >= slot.startAt.getTime() - CHECKIN_OPENS_BEFORE_MS && t <= slot.endAt.getTime();
+      return open ? "checkin" : "confirmed";
+    }
     case AppointmentStatus.CHECKED_IN:
-      return "checkin";
+      return "confirmed";
     case AppointmentStatus.COMPLETED:
     case AppointmentStatus.NO_SHOW:
       return "done";

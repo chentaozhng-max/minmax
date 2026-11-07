@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, handle } from "@/lib/http";
 import { requireUser } from "@/lib/auth";
 import { appointmentGroupOf } from "@/server/experiments";
-import { ACTIVE_APPOINTMENT_STATUSES, type AppointmentStatus } from "@/lib/domain";
+import { ACTIVE_APPOINTMENT_STATUSES, CHECKIN_OPENS_BEFORE_MS, type AppointmentStatus } from "@/lib/domain";
 
 export const GET = handle(async () => {
   const user = await requireUser();
@@ -17,14 +17,14 @@ export const GET = handle(async () => {
     appointments.map((a) => ({
       id: a.id,
       status: a.status,
-      group: appointmentGroupOf(a.status as AppointmentStatus),
+      group: appointmentGroupOf(a.status as AppointmentStatus, a.slot, now),
       appealStatus: a.appealStatus,
       appealAt: a.appealAt?.toISOString() ?? null,
       checkedInAt: a.checkedInAt?.toISOString() ?? null,
       conflict: false,
       canCheckIn:
         a.status === "CONFIRMED" &&
-        now.getTime() >= a.slot.startAt.getTime() - 30 * 60 * 1000 &&
+        now.getTime() >= a.slot.startAt.getTime() - CHECKIN_OPENS_BEFORE_MS &&
         now.getTime() <= a.slot.endAt.getTime(),
       canCancel:
         ACTIVE_APPOINTMENT_STATUSES.includes(a.status as AppointmentStatus) &&

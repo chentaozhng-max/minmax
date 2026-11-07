@@ -202,6 +202,16 @@
       其他错误一律不动（宁可报错也不误删真实数据）。
     - 删除做了三级兜底（unlink → rm → rename）：本机的 fs shim 会拦 `rmSync`，
       Windows 上连接没断时还会 EBUSY —— 必须先 `$disconnect()` 再动文件。
+26. **「待签到」里混进已经签到的**（用户报「签到后角标还是 1」）：
+    原来前端 `appointments-view.tsx` 有一份自己的 `tabOf`，把 `CHECKED_IN` 硬归到 `checkin`，
+    和服务端 `appointmentGroupOf` 各写一套 —— 改服务端没用，页面照旧。
+    - 前端直接吃服务端的 `group`，不再自己判一遍（单一事实源）
+    - 服务端：`CHECKED_IN`（已签到等主试确认）归到 `confirmed`；
+      `CONFIRMED` 只有真的进了签到窗口才归 `checkin`——否则明天开始的实验也挂着「待签到」
+    - 签到窗口从三处硬编码收成一个常量 `CHECKIN_OPENS_BEFORE_MS`（`domain/constants.ts`）
+    - 落点：`server/experiments.ts`、`app/api/me/appointments/route.ts`、
+      `server/appointments.ts`、`app/appointments/appointments-view.tsx`
+      + `tests/appointment-group.test.ts` 13 例
 
 ### 验证（本次实测）
 

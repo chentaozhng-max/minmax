@@ -16,6 +16,14 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
+/**
+ * 签到窗口：实验开始前多久开放，到时段结束为止。
+ *
+ * 之前这个 30 分钟在三个地方各写了一遍（页面算 canCheckIn、服务端校验、分组），
+ * 改一处就漏两处 —— 现在只有这一份。
+ */
+export const CHECKIN_OPENS_BEFORE_MS = 30 * 60 * 1000;
+
 /** 界面上出现的身份叫法，避免各处手写"主试/被试"写岔 */
 export const roleLabel: Record<string, string> = {
   SUBJECT: "被试",
