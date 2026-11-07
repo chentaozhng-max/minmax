@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Compass } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { makePageQuery } from "@/adapters/db/prisma/page-query";
 import { makeSubjectTodoQuery } from "@/adapters/db/prisma/page-query-subject-todo";
@@ -144,6 +144,20 @@ export default async function MePage() {
             <Button variant="outline" size="lg" block>
               我的预约
             </Button>
+          </Link>
+          {/* 教程只自动弹一次，之后靠这个入口重看（和主试端 /r/profile 一致） */}
+          <Link
+            href="/?tour=1"
+            className="flex items-center justify-between rounded-[10px] border border-line bg-surface px-4 py-3 active:bg-mist"
+          >
+            <span className="inline-flex items-center gap-2 text-[14px] text-ink">
+              <Compass size={17} strokeWidth={1.8} className="text-ink-soft" />
+              新手引导
+            </span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-ink-soft">
+              重看一遍
+              <ChevronRight size={15} strokeWidth={1.8} className="text-ink-soft/60" />
+            </span>
           </Link>
           <LogoutButton />
         </div>

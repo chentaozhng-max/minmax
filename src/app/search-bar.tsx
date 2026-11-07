@@ -22,7 +22,7 @@ export function SearchBar({ initial }: { initial: string }) {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="search">
       <Search
         size={16}
         strokeWidth={1.9}

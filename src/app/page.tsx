@@ -10,6 +10,8 @@ import { BackButton } from "@/components/back-button";
 import { ProfileLink } from "@/components/profile-link";
 import { SearchBar } from "./search-bar";
 import { FilterChips } from "./filter-chips";
+import { GuidedTour } from "@/components/guided-tour";
+import { HOME_TOUR_STEPS } from "./tour-steps";
 import { CheckCircle2 } from "lucide-react";
 import { startOfShanghaiDay } from "@/lib/time";
 
@@ -19,6 +21,7 @@ type Search = {
   reward?: string;
   date?: string;
   onlyEligible?: string;
+  tour?: string;
 };
 
 function resolveDate(value: string | undefined, now: Date) {
@@ -81,7 +84,9 @@ export default async function HomePage({
         </div>
       </div>
 
-      <div className="px-4 pt-3">
+      {/* data-tour 挂在这一整块上而不是卡片容器：没有实验时会渲染空状态，
+          卡片容器不存在会让「列表」这一步被 Tour 跳过 */}
+      <div className="px-4 pt-3" data-tour="list">
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="text-[13px] font-semibold text-ink-soft">
             正在招募 <span className="num text-ink">{cards.length}</span> 个实验
@@ -127,6 +132,14 @@ export default async function HomePage({
           </div>
         )}
       </div>
+
+      {/* 新手引导：只被客户端组件挂载，锚点都在上面这个服务端渲染的结构里。
+          `?tour=1` 进来强制弹一次（「我的」里的重看入口），否则 localStorage 判首次 */}
+      <GuidedTour
+        steps={HOME_TOUR_STEPS}
+        storageKey="psymatch:tour:subject:v1"
+        tourRequested={sp.tour === "1"}
+      />
 
       <TabBar role="SUBJECT" />
     </main>

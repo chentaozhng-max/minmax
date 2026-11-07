@@ -52,7 +52,7 @@ export function FilterChips() {
   }
 
   return (
-    <div className="scroll-x flex gap-1.5 overflow-x-auto pb-0.5">
+    <div className="scroll-x flex gap-1.5 overflow-x-auto pb-0.5" data-tour="filters">
       {renderChips(ELIGIBLE, "")}
       {renderChips(DATES, "")}
       {renderChips(DURATIONS, "")}

@@ -14,6 +14,8 @@ import { remainingOf } from "@/server/experiments";
 import { getSubjectState } from "@/server/questionnaire-service";
 import { cn } from "@/lib/cn";
 import { Bot, ChevronRight } from "lucide-react";
+import { GuidedTour } from "@/components/guided-tour";
+import { EXPERIMENT_TOUR_STEPS } from "@/app/tour-steps";
 import { BookCta } from "./book-cta";
 import { ContactCard } from "./contact-card";
 
@@ -24,11 +26,14 @@ import { ContactCard } from "./contact-card";
  */
 export default async function ExperimentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tour?: string }>;
 }) {
   await requirePage("SUBJECT");
   const { id } = await params;
+  const sp = await searchParams;
   const now = new Date();
 
   const query = makeExperimentPageQuery(prisma);
@@ -263,7 +268,7 @@ export default async function ExperimentDetailPage({
 
       {/* 可选时段 —— 线上实验没有时段，整块不渲染 */}
       {experiment.mode === "ONLINE" ? null : (
-      <section className="px-4 py-4">
+      <section className="px-4 py-4" data-tour="slots">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-[15px] font-semibold text-ink">可选时段</h3>
           <span className="num text-[12px] text-ink-soft">
@@ -289,7 +294,7 @@ export default async function ExperimentDetailPage({
           实验已关闭/报名已截止时不显示：这时候进去也约不了，等于给个死路。
           但资格不符（信誉/认证/禁期）时仍然显示 —— 进去能看到原因，也顺带拿到「去约别的实验」的出口。 */}
       {!closed && !deadlinePassed && experiment.mode !== "ONLINE" ? (
-        <section className="px-4 pb-4">
+        <section className="px-4 pb-4" data-tour="ai">
           <Link
             href={`/experiments/${experiment.id}/chat`}
             className={cn(
@@ -329,6 +334,15 @@ export default async function ExperimentDetailPage({
       ) : (
         <div className="h-4" />
       )}
+
+      {/* 详情页引导：锚点是「可选时段」和「AI 入口」。
+          线上实验没有时段（整块不渲染），Tour 会自动跳过找不到的那步，
+          所以线上实验只会看到 AI 那一步、或者两步都跳过 —— 不会卡在半截。 */}
+      <GuidedTour
+        steps={EXPERIMENT_TOUR_STEPS}
+        storageKey="psymatch:tour:experiment:v1"
+        tourRequested={sp.tour === "1"}
+      />
 
       {/* 底部固定操作条 */}
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-surface">
