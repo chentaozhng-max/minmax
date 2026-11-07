@@ -193,6 +193,15 @@
       点了发现是编辑器。现在拆开了：线上走统计块进答卷，下面只留「编辑问卷题目 →」；
       线下统计块不可点，卡片保留「答卷」+「编辑题目」两行。
     - 落点：`app/r/experiments/[id]/detail-view.tsx`
+25. **发布沙箱里的旧库会让整站 500**（线上真实故障）：
+    发布目录 `E://minmax` 长期停在 v1.2，那里残留的 `prisma/dev.db` 是 10-28 的旧结构。
+    沙箱复用工作目录、上传包又不含 `dev.db`，所以旧库一直留着 —— 新代码一查
+    `Experiment.mode` 就 `no such column`，接口全部 500（页面是客户端渲染，HTML 还是 200，很难查）。
+    - 新增 `scripts/ensure-schema.mjs` 挂在 `npm start` 前面：启动前探一下结构，
+      **只在 Prisma 报 `no such column` / `no such table` 时**清掉旧库，交给 `prepare-db` 重建。
+      其他错误一律不动（宁可报错也不误删真实数据）。
+    - 删除做了三级兜底（unlink → rm → rename）：本机的 fs shim 会拦 `rmSync`，
+      Windows 上连接没断时还会 EBUSY —— 必须先 `$disconnect()` 再动文件。
 
 ### 验证（本次实测）
 
