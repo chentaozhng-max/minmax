@@ -18,16 +18,10 @@ import { formatDayCN, formatHM } from "@/lib/time";
 import { rewardLabel } from "@/lib/reward";
 import { cn } from "@/lib/cn";
 import type { AppointmentItem } from "@/lib/types";
+import { ACTIVE_TAB_KEYS, APPOINTMENT_TABS, parseAppointmentsTab, type AppointmentTab } from "./tabs";
 
-const TABS = [
-  { key: "pending", label: "待确认" },
-  { key: "confirmed", label: "已确认" },
-  { key: "checkin", label: "待签到" },
-  { key: "done", label: "已完成" },
-  { key: "cancelled", label: "已取消" },
-] as const;
-
-type TabKey = (typeof TABS)[number]["key"];
+/** 一栏真正承载的状态；`active` 是三个进行中栏的聚合 */
+type TabKey = AppointmentTab;
 
 /**
  * 落到哪个 tab —— 直接用服务端算好的 `group`，前端不再自己判一遍。
@@ -36,13 +30,18 @@ type TabKey = (typeof TABS)[number]["key"];
  * `appointmentGroupOf` 各写一套：改服务端没用，页面照旧把已签到的
  * 塞进「待签到」，角标一直是 1（用户以为漏签了）。
  * 签到窗口（开始前 30 分钟）也跟着搬到了 `domain/constants.ts` 里，只有一份。
+ *
+ * 返回类型排除 `active`：它是「进行中」聚合视角（pending+confirmed+checkin），
+ * 没有哪条预约能单独落进去。
  */
-function tabOf(item: AppointmentItem): TabKey {
+function tabOf(item: AppointmentItem): Exclude<TabKey, "active"> {
   return item.group;
 }
 
-export function AppointmentsView() {
-  const [tab, setTab] = useState<TabKey>("pending");
+export function AppointmentsView({ initialTab }: { initialTab?: string | string[] }) {
+  // 深链：从「我的」页点「进行中 / 已完成」过来时直接落在对应栏。
+  // 解析函数放 `./tabs.ts`（无 "use client"），服务端页面也用它校验参数。
+  const [tab, setTab] = useState<TabKey>(() => parseAppointmentsTab(initialTab));
   const [appealTarget, setAppealTarget] = useState<AppointmentItem | null>(null);
   const [appealNote, setAppealNote] = useState("");
   const queryClient = useQueryClient();
@@ -76,7 +75,7 @@ export function AppointmentsView() {
 
   const items = data ?? [];
   const grouped = useMemo(() => {
-    const map: Record<TabKey, AppointmentItem[]> = {
+    const map: Record<Exclude<TabKey, "active">, AppointmentItem[]> = {
       pending: [],
       confirmed: [],
       checkin: [],
@@ -87,7 +86,14 @@ export function AppointmentsView() {
     return map;
   }, [items]);
 
-  const list = grouped[tab];
+  // `active` 是聚合视角：把三栏合起来按时间升序排（最近要去的放最上面）。
+  // 直接 concat 会让「待签到」整块排在「待确认」后面，与「哪个先到时间」无关。
+  const list = useMemo(() => {
+    if (tab !== "active") return grouped[tab];
+    return ACTIVE_TAB_KEYS.flatMap((k) => grouped[k]).sort(
+      (a, b) => new Date(a.slot.startAt).getTime() - new Date(b.slot.startAt).getTime(),
+    );
+  }, [tab, grouped]);
 
   /**
    * 时间撞车。规则在 `domain/assistant-brief.ts::pickActiveOverlaps`（纯函数、有单测），
@@ -150,8 +156,11 @@ export function AppointmentsView() {
       ) : null}
 
       <div className="scroll-x sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-paper/95 px-3 py-2 backdrop-blur">
-        {TABS.map((t) => {
-          const count = grouped[t.key].length;
+        {APPOINTMENT_TABS.map((t) => {
+          const count =
+            t.key === "active"
+              ? ACTIVE_TAB_KEYS.reduce((n, k) => n + grouped[k].length, 0)
+              : grouped[t.key].length;
           return (
             <button
               key={t.key}
@@ -181,7 +190,7 @@ export function AppointmentsView() {
           </div>
         ) : list.length === 0 ? (
           <EmptyState
-            title={tab === "pending" ? "没有待确认的预约" : "这一栏是空的"}
+            title={tab === "pending" ? "没有待确认的预约" : tab === "active" ? "没有进行中的预约" : "这一栏是空的"}
             description="去首页看看正在招募的实验，挑一个时段就能约上。"
             action={
               <Link href="/">
