@@ -205,6 +205,36 @@ export interface ResearcherPageQuery {
   findResearcherDashboard(userId: string, eventTake: number): Promise<ResearcherDashboard>;
 }
 
+/** 被试「我的」页的待办：还没填的问卷 */
+export type SubjectQuestionnaireTodo = {
+  experimentId: string;
+  experimentTitle: string;
+  questionnaireId: string;
+  questionnaireTitle: string;
+  rewardText: string;
+  durationMin: number;
+  researcherName: string;
+  scheduleMode: string;
+  windowStart: Date | null;
+  repeatCount: number;
+  openAnytime: boolean;
+  signupDeadline: Date;
+};
+
+export interface SubjectTodoQuery {
+  /**
+   * 需要问卷、问卷已发布、实验还在招募的**全部候选**（含我已经交过的）。
+   *
+   * 「哪几份现在该填」由 `domain/questionnaire-todo.ts` 判 ——
+   * 那条规则有「填过昨天仍需今天填」「窗口没开不算」这类非 SQL 判断，
+   * 放适配层会被 where 悄悄吃掉一部分，且只能靠造库测。
+   */
+  listQuestionnaireCandidatesForSubject(subjectId: string): Promise<SubjectQuestionnaireTodo[]>;
+
+  /** 我在各份问卷上已经交过的轮次（WINDOW 型一人多轮） */
+  listMyResponseRounds(subjectId: string): Promise<Array<{ questionnaireId: string; round: number }>>;
+}
+
 /** 信誉分页顶部的用户信息（被试与主试共用，role 决定文案） */
 export type CreditPageUser = {
   id: string;

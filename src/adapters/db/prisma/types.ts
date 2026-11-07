@@ -64,6 +64,20 @@ export type QueryClientLike = {
   appointment: AppointmentDelegate;
 };
 
+/** 被试「待填问卷」查询用到的客户端形状（`page-query-subject-todo.ts`） */
+export type QuestionnaireDelegate = {
+  findMany(args: unknown): Promise<unknown[]>;
+};
+
+export type QuestionnaireResponseDelegate = {
+  findMany(args: unknown): Promise<unknown[]>;
+};
+
+export type SubjectTodoClientLike = {
+  questionnaire: QuestionnaireDelegate;
+  questionnaireResponse: QuestionnaireResponseDelegate;
+};
+
 export type PageQueryClientLike = {
   user: UserDelegate;
   creditEvent: CreditEventDelegate;
