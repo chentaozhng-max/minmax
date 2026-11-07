@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { makePageQuery } from "@/adapters/db/prisma/page-query";
+import { makeSubjectTodoQuery } from "@/adapters/db/prisma/page-query-subject-todo";
 import { requirePage } from "@/lib/page-auth";
 import { PageHeader } from "@/components/page-header";
 import { TabBar } from "@/components/tab-bar";
@@ -12,16 +13,19 @@ import { creditReasonLabel, type CreditReason } from "@/lib/domain";
 import { formatDateTimeCN } from "@/lib/time";
 import { LogoutButton } from "@/components/logout-button";
 import { makeDefaultNotificationRepository } from "@/adapters/db/prisma/notification-repo";
+import { pickPendingQuestionnaires } from "@/domain/questionnaire-todo";
 import { ReminderEntry } from "./reminder-entry";
 
 export default async function MePage() {
   const session = await requirePage("SUBJECT");
   const pageQuery = makePageQuery(prisma);
+  const todoQuery = makeSubjectTodoQuery(prisma);
+  const now = new Date();
 
-  // 这四件事都只依赖 session.sub（会话里已经带了用户 id），彼此没有先后关系，
+  // 这几件事都只依赖 session.sub（会话里已经带了用户 id），彼此没有先后关系，
   // 一次并发发出去。原来是「查资料 → 查统计 → 查未读」三段 await，
   // 云端每段都是一次往返，叠起来就是点进「我的」要等的那一下。
-  const [user, events, counts, unread] = await Promise.all([
+  const [user, events, counts, unread, todoCandidates, myRounds] = await Promise.all([
     pageQuery.findMeProfile(session.sub),
     pageQuery.findRecentCreditEvents(session.sub, 20),
     pageQuery.countAppointmentsByStatus(
@@ -31,13 +35,16 @@ export default async function MePage() {
     ),
     // 「我的」页要显示提醒入口的未读数，只查一个 count，不拉列表
     makeDefaultNotificationRepository().countUnread(session.sub),
+    todoQuery.listQuestionnaireCandidatesForSubject(session.sub),
+    todoQuery.listMyResponseRounds(session.sub),
   ]);
   if (!user) return null;
 
   const completed = counts.completed;
   const ongoing = counts.ongoing;
+  // 「现在该填几份」由领域纯函数判（长程重复测量按轮次算，窗口没开的不算待办）
+  const pendingQuestionnaires = pickPendingQuestionnaires(todoCandidates, myRounds, now).length;
 
-  const now = new Date();
   const banned = user.bannedUntil && user.bannedUntil.getTime() > now.getTime();
 
   return (
@@ -66,10 +73,16 @@ export default async function MePage() {
             </Link>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
-            <Stat label="已完成" value={completed} />
-            <Stat label="进行中" value={ongoing} />
-            <Stat label="累计未到场" value={user.noShowCount} />
+          <div className="mt-3 grid grid-cols-4 divide-x divide-line rounded-[8px] bg-mist/60 py-2 text-center">
+            <Stat label="已完成" value={completed} href="/appointments?tab=done" />
+            <Stat label="进行中" value={ongoing} href="/appointments?tab=active" />
+            <Stat
+              label="待填问卷"
+              value={pendingQuestionnaires}
+              href="/me/questionnaires"
+              highlight={pendingQuestionnaires > 0}
+            />
+            <Stat label="累计未到场" value={user.noShowCount} href="/me/credit" />
           </div>
 
           {banned ? (
@@ -141,11 +154,21 @@ export default async function MePage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  href,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  href: string;
+  highlight?: boolean;
+}) {
   return (
-    <div>
-      <p className="num text-[17px] font-semibold text-ink">{value}</p>
+    <Link href={href} aria-label={`${label} ${value}，点击查看`} className="block py-1 active:bg-line/40">
+      <p className={`num text-[17px] font-semibold ${highlight ? "text-clay" : "text-ink"}`}>{value}</p>
       <p className="mt-0.5 text-[11px] text-ink-soft">{label}</p>
-    </div>
+    </Link>
   );
 }
